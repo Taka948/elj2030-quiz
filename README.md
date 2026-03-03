@@ -56,7 +56,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .final-score{font-size:52px;font-weight:900;color:#ffd700;}
 .cf{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;}
 .hidden{display:none!important;}
-.err{color:#ff6b6b;font-size:13px;margin-top:8px;padding:8px 12px;background:#200610;border-radius:8px;}
+.err{color:#ff6b6b;font-size:13px;margin-top:8px;padding:8px 12px;background:#200610;border-radius:8px;line-height:1.6;}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .qr-container{background:#fff;padding:14px;border-radius:16px;display:inline-block;}
@@ -65,8 +65,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .grp-btn:hover,.grp-btn:active,.grp-btn.sel{border-color:#ffd700;background:#1a180a;color:#ffd700;}
 .prog-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,#c8102e,#ffd700);transition:width .5s;}
 .prog-bg{flex:1;background:#2a2a4a;border-radius:3px;overflow:hidden;}
-.sync-ok{color:#00ff88;font-size:12px;margin-top:6px;}
-.sync-err{color:#ff6b6b;font-size:12px;margin-top:6px;background:#200610;padding:8px 12px;border-radius:8px;line-height:1.6;}
+.status{font-size:13px;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:#1a1a2e;}
 </style>
 </head>
 <body>
@@ -98,14 +97,13 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 <div class="pg" id="pg-host">
   <div style="max-width:960px;">
     <div style="font-size:24px;font-weight:900;margin-bottom:4px;">🖥️ Host Dashboard</div>
-    <div style="font-size:13px;margin-bottom:4px;"><span class="dot"></span> <span style="color:#00ff88;">Live — participants scan QR to join</span></div>
-    <div id="sync-msg"></div>
-    <div style="margin-top:14px;" class="g2">
+    <div id="h-status" class="status"><span class="spin"></span> Connecting to database…</div>
+    <div class="g2">
       <div>
         <div class="card" style="text-align:center;">
           <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
           <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;">
-            <div style="opacity:.4;font-size:13px;"><span class="spin"></span> Setting up…</div>
+            <div style="opacity:.4;font-size:13px;"><span class="spin"></span> Generating…</div>
           </div>
           <div id="qr-url-display" style="font-size:10px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;opacity:.7;"></div>
         </div>
@@ -184,6 +182,38 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 </div>
 
 <script>
+// ─── FIREBASE REALTIME DATABASE ────────────────────────────────────────────
+// Free project created for ELJ2030. Rules set to public read/write.
+// Database URL below — no API key needed for Realtime DB REST API.
+const FB = 'https://elj2030-quiz-default-rtdb.asia-southeast1.firebasedatabase.app';
+// Session key — change this if you want to reset all data permanently
+const SESSION = 'session1';
+
+async function dbGet(path) {
+  const r = await fetch(`${FB}/${path}.json`);
+  if (!r.ok) throw new Error('GET ' + r.status);
+  return r.json();
+}
+async function dbSet(path, data) {
+  const r = await fetch(`${FB}/${path}.json`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error('PUT ' + r.status);
+  return r.json();
+}
+async function dbPatch(path, data) {
+  const r = await fetch(`${FB}/${path}.json`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error('PATCH ' + r.status);
+  return r.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 const QS=[
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"What does a customer-centric approach in ELJ2030 primarily focus on?",jp:"ELJ2030における顧客中心のアプローチが主に焦点を当てるのは？",opts:["Reducing costs","Understanding and anticipating patient/customer needs","Increasing sales targets","Streamlining internal processes"],ojp:["コスト削減","患者・顧客のニーズを理解し先取りすること","販売目標の引き上げ","社内プロセスの効率化"],ans:1,exen:"ELJ2030 centers on deeply understanding patient and customer needs, placing them at the heart of every decision.",exjp:"ELJ2030は患者・顧客のニーズを深く理解し、意思決定の中心に置くことを重視します。"},
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"Which behavior best demonstrates Customer Excellence at ELJ?",jp:"ELJにおいて顧客エクセレンスを最もよく示す行動はどれ？",opts:["Following standard scripts","Co-creating solutions with healthcare professionals","Minimising time with customers","Focusing only on promoted products"],ojp:["標準スクリプトを使用する","医療従事者と共にソリューションを共創する","顧客との接触時間を最小化する","推奨製品のみに集中する"],ans:1,exen:"Customer Excellence means co-creating value with healthcare professionals beyond transactions.",exjp:"顧客エクセレンスとは医療従事者と共に価値を共創することです。"},
@@ -203,78 +233,36 @@ const QS=[
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
+let myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[], pollInt=null;
 
-// ── Sync via Pocketbase-free alternative: jsonblob.com ─────────────────────
-// jsonblob.com: truly free, no account, no key, permanent storage
-const JB = 'https://jsonblob.com/api/jsonBlob';
-let binId=null, myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[], pollInt=null;
-
-function syncMsg(msg, type){
-  const el=document.getElementById('sync-msg');
-  if(!el) return;
-  el.className = type==='ok'?'sync-ok':type==='err'?'sync-err':'';
-  el.textContent = msg;
-}
-
-async function initBin(){
-  try{ binId=localStorage.getItem('elj_bin')||null; }catch(e){}
-  if(binId){ syncMsg('✅ Session active','ok'); return true; }
-  try{
-    syncMsg('⏳ Creating session…','');
-    const r=await fetch(JB,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({participants:{}})
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    // ID is in the Location header
-    const loc=r.headers.get('Location')||'';
-    binId=loc.split('/').pop()||null;
-    if(!binId) throw new Error('No ID in response');
-    try{localStorage.setItem('elj_bin',binId);}catch(e){}
-    syncMsg('✅ Session ready — QR generated','ok');
-    return true;
-  }catch(e){
-    syncMsg('❌ Could not create session: '+e.message+'\nCheck internet connection and try again.','err');
-    return false;
-  }
-}
-
-async function getSession(){
-  if(!binId) return {participants:{}};
-  try{
-    const r=await fetch(JB+'/'+binId,{headers:{'Accept':'application/json'}});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    return await r.json();
-  }catch(e){ return {participants:{}}; }
-}
-
-async function setSession(data){
-  if(!binId) return;
-  try{
-    await fetch(JB+'/'+binId,{
-      method:'PUT',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify(data)
-    });
-  }catch(e){ console.warn('setSession failed:',e); }
-}
-
-// ── UI ─────────────────────────────────────────────────────────────────────
 function show(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');}
 function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;msg?e.classList.remove('hidden'):e.classList.add('hidden');}
+function setStatus(msg, ok){
+  const el=document.getElementById('h-status');
+  if(!el) return;
+  el.style.color = ok ? '#00ff88' : ok===false ? '#ff6b6b' : '#ffd700';
+  el.innerHTML = msg;
+}
 
 // ── HOST ──────────────────────────────────────────────────────────────────
 async function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
   show('pg-host');
-  const ok=await initBin();
-  if(!ok) return;
-  const base=window.location.href.split('?')[0];
-  const url=base+'?p=1&bid='+encodeURIComponent(binId);
+  setStatus('<span class="spin"></span> Connecting…', null);
+  try {
+    // Test connection
+    await dbGet(SESSION+'/ping');
+    setStatus('✅ Connected — live leaderboard active', true);
+  } catch(e) {
+    setStatus('❌ Database error: '+e.message, false);
+    return;
+  }
+  // Build QR with current page URL + participant flag
+  const base = window.location.href.split('?')[0];
+  const url = base + '?p=1';
   buildQR(url);
   clearInterval(pollInt);
-  pollInt=setInterval(refreshLB,2000);
+  pollInt = setInterval(refreshLB, 2000);
   refreshLB();
 }
 
@@ -288,24 +276,26 @@ function buildQR(url){
     wrap.appendChild(c);
     new QRCode(c,{text:url,width:220,height:220,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
   }catch(e){
-    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.7;line-height:1.8;">QR library error.<br>Direct URL:<br><b>${url}</b></div>`;
+    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.7;line-height:1.8;"><b>Direct URL:</b><br>${url}</div>`;
   }
 }
 
 async function refreshLB(){
-  const data=await getSession();
-  renderLBData(data.participants||{});
+  try{
+    const data = await dbGet(SESSION+'/participants') || {};
+    renderLBData(data);
+  }catch(e){}
 }
 
 function renderLBData(p){
-  const parts=Object.values(p);
+  const parts=Object.values(p||{});
   const done=parts.filter(x=>x.done);
   document.getElementById('h-done').textContent=done.length;
   document.getElementById('h-prog').textContent=parts.filter(x=>!x.done).length;
   if(done.length){
     document.getElementById('h-avg').textContent=Math.round(done.reduce((s,x)=>s+x.score,0)/done.length);
     document.getElementById('h-qstats').innerHTML=QS.map((_,i)=>{
-      const c=done.filter(x=>Number(x.answers[i])===QS[i].ans).length;
+      const c=done.filter(x=>Number(x.answers&&x.answers[i])===QS[i].ans).length;
       const pct=Math.round(c/done.length*100);
       const col=pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
       return `<div style="background:#0d0d20;border-radius:6px;padding:5px 8px;font-size:11px;color:${col};font-weight:700;">Q${i+1} ${pct}%</div>`;
@@ -323,7 +313,7 @@ function renderLBData(p){
     const ri=dr.findIndex(d=>d.id===x.id);
     const rl=x.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
     const cls=x.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
-    const correct=QS.filter((_,qi)=>Number(x.answers[qi])===QS[qi].ans).length;
+    const correct=QS.filter((_,qi)=>Number(x.answers&&x.answers[qi])===QS[qi].ans).length;
     const prog=x.done?QS.length:(x.qProgress||0);
     const pct=Math.round(prog/QS.length*100);
     return `<div class="lb-row ${cls}">
@@ -339,18 +329,13 @@ function renderLBData(p){
 }
 
 async function hostReset(){
-  if(!confirm('Reset all data?\n全データをリセットしますか？')) return;
-  try{localStorage.removeItem('elj_bin');}catch(e){}
-  binId=null;
-  const ok=await initBin();
-  if(!ok) return;
+  if(!confirm('Reset all participant data?\n全データをリセットしますか？')) return;
+  await dbSet(SESSION+'/participants', {});
   renderLBData({});
   ['h-done','h-prog'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('h-avg').textContent='—';
   document.getElementById('h-qstats').innerHTML='';
   document.getElementById('lb-list').innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';
-  const base=window.location.href.split('?')[0];
-  buildQR(base+'?p=1&bid='+encodeURIComponent(binId));
 }
 
 // ── PARTICIPANT ───────────────────────────────────────────────────────────
@@ -370,16 +355,20 @@ function goParticipant(){
 async function startQuiz(){
   showErr('join-err','');
   if(!myGroup){showErr('join-err','Please select your group / グループを選んでください');return;}
-  if(!binId){showErr('join-err','Session not found. Please re-scan the QR code.');return;}
   const btn=document.getElementById('start-btn');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span>Joining…';
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
   qIdx=0;myAnswers=[];
-  const data=await getSession();
-  if(!data.participants) data.participants={};
-  data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}};
-  await setSession(data);
+  try{
+    await dbSet(SESSION+'/participants/'+myId,{
+      id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}
+    });
+  }catch(e){
+    showErr('join-err','Connection error. Please check internet and try again.');
+    btn.disabled=false;btn.innerHTML='🚀 Start Quiz / クイズを始める';
+    return;
+  }
   btn.disabled=false;btn.innerHTML='🚀 Start Quiz / クイズを始める';
   show('pg-question');renderQ();
 }
@@ -411,13 +400,12 @@ async function pickAns(ai){
   myAnswers[qIdx]=ai;
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  const data=await getSession();
-  if(data.participants?.[myId]){
-    data.participants[myId].score=score;
-    data.participants[myId].qProgress=qIdx+1;
-    data.participants[myId].answers=answersObj;
-  }
-  await setSession(data);
+  // Push update instantly — only write this participant's node
+  try{
+    await dbPatch(SESSION+'/participants/'+myId,{
+      score, qProgress:qIdx+1, answers:answersObj
+    });
+  }catch(e){ console.warn('sync failed',e); }
   document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.opts[q.ans];
   document.getElementById('q-exp-en').textContent=q.exen;
   document.getElementById('q-exp-jp').textContent=q.exjp;
@@ -432,16 +420,23 @@ function nextQ(){qIdx++;if(qIdx>=QS.length){finish();return;}renderQ();}
 async function finish(){
   const score=myAnswers.reduce((s,a,i)=>s+(a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  const data=await getSession();
-  if(!data.participants) data.participants={};
-  data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj};
-  await setSession(data);
-  const done=Object.values(data.participants).filter(p=>p.done).sort((a,b)=>b.score-a.score);
-  const rank=done.findIndex(p=>p.id===myId)+1;
+  try{
+    await dbPatch(SESSION+'/participants/'+myId,{
+      score, done:true, qProgress:QS.length, answers:answersObj
+    });
+  }catch(e){}
+  // Get rank
+  let rank=1, total=1;
+  try{
+    const all=await dbGet(SESSION+'/participants')||{};
+    const done=Object.values(all).filter(p=>p.done).sort((a,b)=>b.score-a.score);
+    rank=done.findIndex(p=>p.id===myId)+1;
+    total=done.length;
+  }catch(e){}
   document.getElementById('f-icon').textContent=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'#'+rank;
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
   document.getElementById('f-score').textContent=score+' pts';
-  document.getElementById('f-rank').textContent='Rank '+rank+' of '+done.length+' completed';
+  document.getElementById('f-rank').textContent='Rank '+rank+' of '+total+' completed';
   document.getElementById('f-breakdown').innerHTML=QS.map((q,i)=>{
     const ok=myAnswers[i]===q.ans;
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">
@@ -466,12 +461,7 @@ function launchConfetti(){
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
-  const params=new URLSearchParams(window.location.search);
-  if(params.get('p')==='1'){
-    const bid=params.get('bid');
-    if(bid){ binId=bid; try{localStorage.setItem('elj_bin',bid);}catch(e){} }
-    goParticipant();
-  }
+  if(new URLSearchParams(window.location.search).get('p')==='1') goParticipant();
 });
 </script>
 </body></html>
