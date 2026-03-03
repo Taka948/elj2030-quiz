@@ -298,6 +298,12 @@
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);}
 html,body{height:100%;background:#0a0a1a;color:#fff;font-family:'Inter','Noto Sans JP',sans-serif;}
 body{display:flex;flex-direction:column;overflow:hidden;}
+
+/* Download bar: visible only inside Claude preview, hidden on real sites */
+#dl-bar{background:#1a180a;border-bottom:2px solid #ffd700;padding:9px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;}
+#dl-bar span{font-size:12px;color:#ffd700;font-weight:600;}
+#dl-bar button{background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;}
+
 .hdr{background:linear-gradient(135deg,#c8102e,#8b0000);padding:calc(var(--st)+10px) 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .logo{font-size:22px;font-weight:900;letter-spacing:2px;}.logo b{color:#ffd700;}
 .hdr-r{font-size:12px;opacity:.75;text-align:right;}
@@ -354,13 +360,15 @@ input[type=text]:focus{border-color:#ffd700;}
 .grp-btn:hover,.grp-btn:active,.grp-btn.sel{border-color:#ffd700;background:#1a180a;color:#ffd700;}
 .prog-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,#c8102e,#ffd700);transition:width .5s;}
 .prog-bg{flex:1;background:#2a2a4a;border-radius:3px;overflow:hidden;}
+.status-badge{display:inline-flex;align-items:center;gap:6px;background:#0d0d20;border-radius:8px;padding:6px 12px;font-size:12px;margin-top:8px;}
 </style>
 </head>
 <body id="artifacts-component-root-html">
 
-<div style="background:#1a180a;border-bottom:2px solid #ffd700;padding:9px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;">
-  <span style="font-size:12px;color:#ffd700;font-weight:600;">⬇ Download this file, then upload to GitHub Pages</span>
-  <button id="dl-btn" onclick="dlFile()" style="background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;">Download HTML</button>
+<!-- Download bar: only shown inside Claude (window.claude exists), hidden on GitHub Pages -->
+<div id="dl-bar" style="display: flex;">
+  <span>⬇ Download to deploy on GitHub Pages</span>
+  <button id="dl-btn" onclick="dlFile()">Download HTML</button>
 </div>
 
 <div class="hdr">
@@ -390,12 +398,15 @@ input[type=text]:focus{border-color:#ffd700;}
 <div class="pg" id="pg-host">
   <div style="max-width:960px;">
     <div style="font-size:24px;font-weight:900;margin-bottom:4px;">🖥️ Host Dashboard</div>
-    <div style="font-size:13px;margin-bottom:18px;"><span class="dot"></span> <span style="color:#00ff88;">Live — participants scan QR to join</span></div>
+    <div style="font-size:13px;margin-bottom:4px;"><span class="dot"></span> <span style="color:#00ff88;">Live — participants scan QR to join</span></div>
+    <div id="sync-status" class="status-badge" style="margin-bottom:16px;">⏳ Connecting…</div>
     <div class="g2">
       <div>
         <div class="card" style="text-align:center;">
           <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
-          <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;"></div>
+          <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;">
+            <div style="opacity:.4;font-size:13px;">Generating QR…</div>
+          </div>
           <div id="qr-url-display" style="font-size:10px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;opacity:.7;"></div>
         </div>
         <div class="card">
@@ -473,13 +484,6 @@ input[type=text]:focus{border-color:#ffd700;}
 </div>
 
 <script>
-// ── NOTE: This file uses localStorage for cross-device sync.
-// All devices must be on the SAME origin (same hosted URL).
-// The host laptop and participant phones all open the same URL.
-// localStorage is shared per-origin in the same browser, but NOT across devices.
-// Cross-device sync uses a free JSONBin.io API (no account needed for basic use).
-// ─────────────────────────────────────────────────────────────────────────────
-
 const QS=[
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"What does a customer-centric approach in ELJ2030 primarily focus on?",jp:"ELJ2030における顧客中心のアプローチが主に焦点を当てるのは？",opts:["Reducing costs","Understanding and anticipating patient/customer needs","Increasing sales targets","Streamlining internal processes"],ojp:["コスト削減","患者・顧客のニーズを理解し先取りすること","販売目標の引き上げ","社内プロセスの効率化"],ans:1,exen:"ELJ2030 centers on deeply understanding patient and customer needs, placing them at the heart of every decision.",exjp:"ELJ2030は患者・顧客のニーズを深く理解し、意思決定の中心に置くことを重視します。"},
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"Which behavior best demonstrates Customer Excellence at ELJ?",jp:"ELJにおいて顧客エクセレンスを最もよく示す行動はどれ？",opts:["Following standard scripts","Co-creating solutions with healthcare professionals","Minimising time with customers","Focusing only on promoted products"],ojp:["標準スクリプトを使用する","医療従事者と共にソリューションを共創する","顧客との接触時間を最小化する","推奨製品のみに集中する"],ans:1,exen:"Customer Excellence means co-creating value with healthcare professionals beyond transactions.",exjp:"顧客エクセレンスとは医療従事者と共に価値を共創することです。"},
@@ -499,57 +503,78 @@ const QS=[
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
+const JSONBIN_BASE='https://api.jsonbin.io/v3/b';
+let binId=null, myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[], pollInt=null;
 
-// ── JSONBin for cross-device shared state (free, no account) ──────────────
-// We create one bin per session and store the bin ID in localStorage.
-// All devices read/write the same bin via fetch.
-const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
-// No API key needed for public bins (read/write open)
-let binId = null;
-let myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[], pollInt=null;
-
-async function initBin() {
-  // Try to reuse existing bin from localStorage
-  try { binId = localStorage.getItem('elj_bin_id') || null; } catch(e){}
-  if (!binId) {
-    // Create a new public bin
-    try {
-      const r = await fetch(JSONBIN_BASE, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json', 'X-Bin-Private':'false'},
-        body: JSON.stringify({participants:{}})
-      });
-      const d = await r.json();
-      binId = d.metadata?.id || d.record?.id || d.id || null;
-      if (binId) {
-        try { localStorage.setItem('elj_bin_id', binId); } catch(e){}
-      }
-    } catch(e) { binId = null; }
+// ── Show download bar only inside Claude (not on GitHub Pages) ─────────────
+window.addEventListener('load', ()=>{
+  // window.claude exists only inside Claude's artifact sandbox
+  if (typeof window.claude !== 'undefined' || window.location.href.includes('claude.ai')) {
+    document.getElementById('dl-bar').style.display='flex';
   }
-  return binId;
+  const params=new URLSearchParams(window.location.search);
+  if (params.get('p')==='1') {
+    const bid=params.get('bid');
+    if (bid) { binId=bid; try{localStorage.setItem('elj_bin',bid);}catch(e){} }
+    goParticipant();
+  }
+});
+
+// ── Storage (JSONBin public API — no account needed) ──────────────────────
+function setSyncStatus(msg, ok){
+  const el=document.getElementById('sync-status');
+  if(!el) return;
+  el.textContent=msg;
+  el.style.color=ok?'#00ff88':'#ffd700';
 }
 
-async function getSession() {
-  if (!binId) return {participants:{}};
+async function initBin(){
+  // Try localStorage first
+  if(!binId){ try{binId=localStorage.getItem('elj_bin')||null;}catch(e){} }
+  if(binId){ setSyncStatus('✅ Session ready',true); return binId; }
   try {
-    const r = await fetch(JSONBIN_BASE+'/'+binId+'/latest');
-    const d = await r.json();
-    return d.record || {participants:{}};
-  } catch(e) { return {participants:{}}; }
-}
-
-async function setSession(data) {
-  if (!binId) return;
-  try {
-    await fetch(JSONBIN_BASE+'/'+binId, {
-      method: 'PUT',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(data)
+    setSyncStatus('⏳ Creating session…', false);
+    const r=await fetch(JSONBIN_BASE,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Bin-Private':'false','X-Bin-Name':'ELJ2030'},
+      body:JSON.stringify({participants:{}})
     });
-  } catch(e){}
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    binId=d.metadata?.id||null;
+    if(!binId) throw new Error('No ID returned');
+    try{localStorage.setItem('elj_bin',binId);}catch(e){}
+    setSyncStatus('✅ Session ready',true);
+    return binId;
+  } catch(e){
+    setSyncStatus('⚠️ Sync error: '+e.message, false);
+    return null;
+  }
 }
 
-// ── UI helpers ─────────────────────────────────────────────────────────────
+async function getSession(){
+  if(!binId) return {participants:{}};
+  try{
+    const r=await fetch(JSONBIN_BASE+'/'+binId+'/latest');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    return d.record||{participants:{}};
+  }catch(e){ return {participants:{}}; }
+}
+
+async function setSession(data){
+  if(!binId) return;
+  try{
+    const r=await fetch(JSONBIN_BASE+'/'+binId,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+  }catch(e){ console.error('setSession:',e); }
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
 function show(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');}
 function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;msg?e.classList.remove('hidden'):e.classList.add('hidden');}
 
@@ -557,79 +582,70 @@ function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;m
 async function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
   show('pg-host');
-  document.getElementById('qr-wrap').innerHTML='<div style="opacity:.4;font-size:13px;">Setting up session…</div>';
-
-  await initBin();
-
-  // QR points to same URL with ?p=1
-  const base = window.location.href.split('?')[0];
-  const url = base + '?p=1';
+  const id=await initBin();
+  if(!id){ setSyncStatus('❌ Could not create session. Check internet.',false); return; }
+  const base=window.location.href.split('?')[0];
+  const url=base+'?p=1&bid='+encodeURIComponent(id);
   buildQR(url);
-
   clearInterval(pollInt);
-  pollInt = setInterval(refreshLB, 2000);
+  pollInt=setInterval(refreshLB,2000);
   refreshLB();
 }
 
-function buildQR(url) {
-  const wrap = document.getElementById('qr-wrap');
-  wrap.innerHTML = '';
-  document.getElementById('qr-url-display').textContent = url;
-  try {
-    const c = document.createElement('div');
-    c.className = 'qr-container';
+function buildQR(url){
+  const wrap=document.getElementById('qr-wrap');
+  wrap.innerHTML='';
+  document.getElementById('qr-url-display').textContent=url;
+  try{
+    const c=document.createElement('div');
+    c.className='qr-container';
     wrap.appendChild(c);
-    new QRCode(c, {text:url, width:220, height:220, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M});
-  } catch(e) {
-    wrap.innerHTML = `<div style="padding:16px;font-size:12px;word-break:break-all;opacity:.6;">${url}</div>`;
+    new QRCode(c,{text:url,width:220,height:220,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){
+    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.6;line-height:1.7;">${url}</div>`;
   }
 }
 
 async function refreshLB(){
-  const data = await getSession();
-  renderLBData(data.participants || {});
+  const data=await getSession();
+  renderLBData(data.participants||{});
 }
 
 function renderLBData(participants){
-  const parts = Object.values(participants);
-  const done = parts.filter(p=>p.done);
-  const inProg = parts.filter(p=>!p.done);
-  document.getElementById('h-done').textContent = done.length;
-  document.getElementById('h-prog').textContent = inProg.length;
-  if (done.length) {
-    const avg = Math.round(done.reduce((s,p)=>s+p.score,0)/done.length);
-    document.getElementById('h-avg').textContent = avg;
-    document.getElementById('h-qstats').innerHTML = QS.map((_,i)=>{
-      const c = done.filter(p=>Number(p.answers[i])===QS[i].ans).length;
-      const pct = Math.round(c/done.length*100);
-      const col = pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
+  const parts=Object.values(participants);
+  const done=parts.filter(p=>p.done);
+  document.getElementById('h-done').textContent=done.length;
+  document.getElementById('h-prog').textContent=parts.filter(p=>!p.done).length;
+  if(done.length){
+    document.getElementById('h-avg').textContent=Math.round(done.reduce((s,p)=>s+p.score,0)/done.length);
+    document.getElementById('h-qstats').innerHTML=QS.map((_,i)=>{
+      const c=done.filter(p=>Number(p.answers[i])===QS[i].ans).length;
+      const pct=Math.round(c/done.length*100);
+      const col=pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
       return `<div style="background:#0d0d20;border-radius:6px;padding:5px 8px;font-size:11px;color:${col};font-weight:700;">Q${i+1} ${pct}%</div>`;
     }).join('');
   } else {
     document.getElementById('h-avg').textContent='—';
     document.getElementById('h-qstats').innerHTML='';
   }
-  const allActive = [...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
-  document.getElementById('lb-count').textContent = allActive.length ? allActive.length+' participant'+(allActive.length>1?'s':'') : '';
-  const list = document.getElementById('lb-list');
-  if (!allActive.length) {
-    list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';
-    return;
-  }
-  const doneRanked = [...done].sort((a,b)=>b.score-a.score);
-  list.innerHTML = allActive.map(p=>{
-    const ri = doneRanked.findIndex(d=>d.id===p.id);
-    const rankLabel = p.done ? (ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)) : '⏳';
-    const cls = p.done ? (ri===0?'r1':ri===1?'r2':ri===2?'r3':'') : '';
-    const correct = QS.filter((_,qi)=>Number(p.answers[qi])===QS[qi].ans).length;
-    const progress = p.done ? QS.length : (p.qProgress||0);
-    const pct = Math.round(progress/QS.length*100);
+  const allActive=[...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
+  document.getElementById('lb-count').textContent=allActive.length?allActive.length+' participant'+(allActive.length>1?'s':''):'';
+  const list=document.getElementById('lb-list');
+  if(!allActive.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';return;}
+  const doneRanked=[...done].sort((a,b)=>b.score-a.score);
+  list.innerHTML=allActive.map(p=>{
+    const ri=doneRanked.findIndex(d=>d.id===p.id);
+    const rankLabel=p.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
+    const cls=p.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
+    const correct=QS.filter((_,qi)=>Number(p.answers[qi])===QS[qi].ans).length;
+    const progress=p.done?QS.length:(p.qProgress||0);
+    const pct=Math.round(progress/QS.length*100);
     return `<div class="lb-row ${cls}">
       <div class="lb-rank">${rankLabel}</div>
       <div class="lb-emoji">${p.emoji||'🔵'}</div>
       <div style="flex:1;">
         <div class="lb-name">${p.name}</div>
-        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${p.done ? correct+'/'+QS.length+' correct' : 'Q'+(progress+1)+'/'+QS.length+' in progress'}</div>
+        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${p.done?correct+'/'+QS.length+' correct':'Q'+(progress+1)+'/'+QS.length+' in progress'}</div>
         ${!p.done?`<div style="display:flex;align-items:center;gap:6px;margin-top:5px;"><div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div><span style="font-size:11px;opacity:.4;">${pct}%</span></div>`:''}
       </div>
       <div style="text-align:right;"><div class="lb-score">${p.score}</div><div style="font-size:12px;opacity:.5;">pts</div></div>
@@ -638,65 +654,49 @@ function renderLBData(participants){
 }
 
 async function hostReset(){
-  if (!confirm('Reset all data?\n全データをリセットしますか？')) return;
-  // Delete old bin and create fresh one
-  try { localStorage.removeItem('elj_bin_id'); } catch(e){}
-  binId = null;
+  if(!confirm('Reset all data?\n全データをリセットしますか？')) return;
+  try{localStorage.removeItem('elj_bin');}catch(e){}
+  binId=null;
   await initBin();
   renderLBData({});
-  document.getElementById('h-done').textContent='0';
-  document.getElementById('h-prog').textContent='0';
+  ['h-done','h-prog'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('h-avg').textContent='—';
   document.getElementById('h-qstats').innerHTML='';
   document.getElementById('lb-list').innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';
+  // Rebuild QR with new binId
+  const base=window.location.href.split('?')[0];
+  buildQR(base+'?p=1&bid='+encodeURIComponent(binId||''));
 }
 
-// ── PARTICIPANT ────────────────────────────────────────────────────────────
+// ── PARTICIPANT ───────────────────────────────────────────────────────────
 function goParticipant(){
   document.getElementById('hdr-r').textContent='📱 Participant';
-  const grid = document.getElementById('group-grid');
-  grid.innerHTML = '';
-  for (let i=1; i<=20; i++) {
-    const b = document.createElement('button');
-    b.className='grp-btn'; b.textContent='Group '+i;
-    b.onclick=()=>{
-      document.querySelectorAll('.grp-btn').forEach(x=>x.classList.remove('sel'));
-      b.classList.add('sel'); myGroup='Group '+i;
-      showErr('join-err','');
-    };
+  const grid=document.getElementById('group-grid');
+  grid.innerHTML='';
+  for(let i=1;i<=20;i++){
+    const b=document.createElement('button');
+    b.className='grp-btn';b.textContent='Group '+i;
+    b.onclick=()=>{document.querySelectorAll('.grp-btn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');myGroup='Group '+i;showErr('join-err','');};
     grid.appendChild(b);
   }
   show('pg-join');
-  // Participant needs the same binId the host created
-  // It's stored in localStorage — works when host & participant
-  // share the same browser (same device), OR when binId is in the URL.
-  // We embed the binId in the QR URL so phones get it automatically.
-  const params = new URLSearchParams(window.location.search);
-  const bid = params.get('bid');
-  if (bid) {
-    binId = bid;
-    try { localStorage.setItem('elj_bin_id', bid); } catch(e){}
-  } else {
-    // Try from localStorage (same device testing)
-    try { binId = localStorage.getItem('elj_bin_id') || null; } catch(e){}
-  }
 }
 
 async function startQuiz(){
   showErr('join-err','');
-  if (!myGroup) { showErr('join-err','Please select your group number / グループ番号を選んでください'); return; }
-  if (!binId) { showErr('join-err','Session not found. Please re-scan the QR code.'); return; }
-  const btn = document.getElementById('start-btn');
-  btn.disabled=true; btn.innerHTML='<span class="spin"></span>Starting…';
+  if(!myGroup){showErr('join-err','Please select your group / グループを選んでください');return;}
+  if(!binId){showErr('join-err','No session found. Please re-scan the QR code.');return;}
+  const btn=document.getElementById('start-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span>Starting…';
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
-  qIdx=0; myAnswers=[];
-  const data = await getSession();
-  if (!data.participants) data.participants={};
+  qIdx=0;myAnswers=[];
+  const data=await getSession();
+  if(!data.participants) data.participants={};
   data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}};
   await setSession(data);
-  btn.disabled=false; btn.innerHTML='🚀 Start Quiz / クイズを始める';
-  show('pg-question'); renderQ();
+  btn.disabled=false;btn.innerHTML='🚀 Start Quiz / クイズを始める';
+  show('pg-question');renderQ();
 }
 
 function renderQ(){
@@ -708,26 +708,26 @@ function renderQ(){
   document.getElementById('q-jp').textContent=q.jp;
   document.getElementById('q-exp').classList.add('hidden');
   document.getElementById('q-next').classList.add('hidden');
-  const c=document.getElementById('q-opts'); c.innerHTML='';
+  const c=document.getElementById('q-opts');c.innerHTML='';
   q.opts.forEach((o,i)=>{
-    const b=document.createElement('button'); b.className='opt';
+    const b=document.createElement('button');b.className='opt';
     b.innerHTML=`<span class="opt-l">${String.fromCharCode(65+i)}.</span>${o}<div class="opt-jp">${q.ojp[i]}</div>`;
-    b.onclick=()=>pickAns(i); c.appendChild(b);
+    b.onclick=()=>pickAns(i);c.appendChild(b);
   });
 }
 
 async function pickAns(ai){
   document.querySelectorAll('.opt').forEach(b=>{b.onclick=null;b.style.cursor='default';});
-  const q=QS[qIdx]; const correct=ai===q.ans;
+  const q=QS[qIdx];
   document.querySelectorAll('.opt').forEach((b,i)=>{
     if(i===q.ans) b.classList.add('correct');
-    else if(i===ai&&!correct) b.classList.add('wrong');
+    else if(i===ai&&ai!==q.ans) b.classList.add('wrong');
   });
   myAnswers[qIdx]=ai;
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
-  const answersObj={}; myAnswers.forEach((a,i)=>answersObj[i]=a);
+  const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   const data=await getSession();
-  if(data.participants&&data.participants[myId]){
+  if(data.participants?.[myId]){
     data.participants[myId].score=score;
     data.participants[myId].qProgress=qIdx+1;
     data.participants[myId].answers=answersObj;
@@ -746,7 +746,7 @@ function nextQ(){qIdx++;if(qIdx>=QS.length){finish();return;}renderQ();}
 
 async function finish(){
   const score=myAnswers.reduce((s,a,i)=>s+(a===QS[i].ans?10:0),0);
-  const answersObj={}; myAnswers.forEach((a,i)=>answersObj[i]=a);
+  const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   const data=await getSession();
   if(!data.participants) data.participants={};
   data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj};
@@ -768,48 +768,24 @@ async function finish(){
   if(score>=120) launchConfetti();
 }
 
-function dlFile(){
-  const html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  const blob=new Blob([html],{type:'text/html'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='index.html';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  const btn=document.getElementById('dl-btn');
-  btn.textContent='✅ Downloaded!';
-  btn.style.background='linear-gradient(135deg,#1a5a3a,#00aa55)';
-}
-
 function launchConfetti(){
-  const c=document.getElementById('cf'); c.innerHTML='';
-  const s=document.createElement('style'); s.textContent='@keyframes cf{to{top:110vh;transform:rotate(720deg);}}'; c.appendChild(s);
+  const c=document.getElementById('cf');c.innerHTML='';
+  const s=document.createElement('style');s.textContent='@keyframes cf{to{top:110vh;transform:rotate(720deg);}}';c.appendChild(s);
   const cols=['#ffd700','#c8102e','#00ff88','#4fc3f7','#ff80ab','#fff'];
   for(let i=0;i<120;i++){
-    const d=document.createElement('div'); const col=cols[i%cols.length]; const sz=Math.random()*10+5;
+    const d=document.createElement('div');const col=cols[i%cols.length];const sz=Math.random()*10+5;
     d.style.cssText=`position:absolute;width:${sz}px;height:${sz}px;background:${col};left:${Math.random()*100}%;top:-20px;border-radius:${Math.random()>.5?'50%':'2px'};animation:cf ${Math.random()*3+2}s linear ${Math.random()*2}s forwards;`;
     c.appendChild(d);
   }
 }
 
-// ── Auto-route ─────────────────────────────────────────────────────────────
-window.addEventListener('load', ()=>{
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('p')==='1') goParticipant();
-});
-
-// ── Override buildQR to embed binId in URL ─────────────────────────────────
-// After initBin resolves, rebuild QR with binId embedded so phones auto-connect
-const _origGoHost = goHost;
-goHost = async function() {
-  document.getElementById('hdr-r').textContent='🖥️ Host';
-  show('pg-host');
-  document.getElementById('qr-wrap').innerHTML='<div style="opacity:.4;font-size:13px;">Setting up session…</div>';
-  await initBin();
-  const base = window.location.href.split('?')[0];
-  const url = base + '?p=1&bid='+encodeURIComponent(binId||'');
-  buildQR(url);
-  clearInterval(pollInt);
-  pollInt = setInterval(refreshLB, 2000);
-  refreshLB();
-};
+function dlFile(){
+  const html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
+  const blob=new Blob([html],{type:'text/html'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='index.html';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  document.getElementById('dl-btn').textContent='✅ Downloaded!';
+}
 </script>
 
 </body></html>
