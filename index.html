@@ -5,28 +5,41 @@
 <meta name="theme-color" content="#0a0a1a">
 <title>ELJ2030 Quiz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Inter:wght@400;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);}
 html,body{height:100%;background:#0a0a1a;color:#fff;font-family:'Inter','Noto Sans JP',sans-serif;}
+
+/* Body is just a flex column — pages handle their own scroll */
 body{display:flex;flex-direction:column;overflow:hidden;}
+
 .hdr{background:linear-gradient(135deg,#c8102e,#8b0000);padding:calc(var(--st)+10px) 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;min-height:50px;}
 .logo{font-size:22px;font-weight:900;letter-spacing:2px;}.logo b{color:#ffd700;}
 .hdr-r{font-size:12px;opacity:.75;text-align:right;}
+
+/* Each page fills remaining space and scrolls independently */
 .pg{display:none;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 20px calc(var(--sb)+40px);}
 .pg.on{display:flex;flex-direction:column;}
+
+/* Role picker centered */
 #pg-role{align-items:center;justify-content:center;text-align:center;gap:20px;}
+
+/* Join page: just column, scrollable */
+#pg-join{gap:0;}
+
 .rcards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:560px;width:100%;}
 .rcard{flex:1;min-width:200px;background:#1a1a2e;border:2px solid #333;border-radius:20px;padding:28px 18px;cursor:pointer;transition:all .2s;}
 .rcard:hover,.rcard:active{border-color:#ffd700;transform:scale(1.03);}
 .rcard-icon{font-size:46px;margin-bottom:12px;}
 .rcard-name{font-size:20px;font-weight:700;margin-bottom:6px;}
 .rcard-desc{font-size:12px;opacity:.5;line-height:1.6;}
+
 .card{background:#1a1a2e;border-radius:16px;padding:18px;margin-bottom:14px;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:960px;width:100%;}
 @media(max-width:640px){.g2{grid-template-columns:1fr;}}
+
 .lb-row{display:flex;align-items:center;background:#1a1a2e;border-radius:13px;padding:14px 18px;margin-bottom:10px;border:2px solid #2a2a4a;}
 .lb-row.r1{border-color:#ffd700;background:#1a180a;}.lb-row.r2{border-color:#c0c0c0;background:#141418;}.lb-row.r3{border-color:#cd7f32;background:#181208;}
 .lb-rank{font-size:26px;font-weight:900;width:50px;}.lb-emoji{font-size:26px;margin:0 12px;}.lb-name{flex:1;font-size:17px;font-weight:700;}
@@ -34,10 +47,20 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .stat-box{text-align:center;}.stat-num{font-size:36px;font-weight:900;}.stat-lbl{font-size:12px;opacity:.5;margin-top:2px;}
 .dot{width:8px;height:8px;border-radius:50%;background:#00ff88;display:inline-block;animation:bl 1.5s infinite;}
 @keyframes bl{0%,100%{opacity:1;}50%{opacity:.2;}}
-.btn-main{width:100%;padding:18px;border:none;border-radius:13px;font-size:18px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;font-family:inherit;margin-top:8px;}
+
+/* Big number input for group */
+.group-input-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px 0 10px;}
+.group-label{font-size:16px;font-weight:700;opacity:.7;text-align:center;line-height:1.6;}
+.group-num-input{width:100%;max-width:280px;background:#0d0d20;border:3px solid #333;border-radius:16px;padding:20px;font-size:48px;font-weight:900;color:#ffd700;font-family:'Inter',sans-serif;outline:none;text-align:center;-moz-appearance:textfield;}
+.group-num-input::-webkit-inner-spin-button,.group-num-input::-webkit-outer-spin-button{-webkit-appearance:none;}
+.group-num-input:focus{border-color:#ffd700;}
+.group-hint{font-size:12px;opacity:.4;text-align:center;}
+
+.btn-main{width:100%;padding:18px;border:none;border-radius:13px;font-size:18px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;font-family:inherit;margin-top:8px;letter-spacing:.5px;}
 .btn-main:active{transform:scale(.98);}
 .btn-main:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .btn-next{width:100%;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#1a5a3a,#00aa55);color:#fff;font-family:inherit;margin-top:8px;}
+
 .q-badge{display:inline-block;background:#c8102e;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;}
 .pbar-wrap{background:#1a1a2e;border-radius:6px;height:8px;overflow:hidden;margin:10px 0 16px;}
 .pbar{height:100%;background:linear-gradient(90deg,#c8102e,#ffd700);border-radius:6px;transition:width .4s;}
@@ -51,11 +74,13 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .opt-jp{font-size:11px;opacity:.5;margin-top:3px;}
 .exp-box{background:#062016;border:2px solid #00aa55;border-radius:12px;padding:14px;margin:12px 0 8px;font-size:13px;line-height:1.6;}
 .exp-jp{font-size:12px;opacity:.6;margin-top:5px;}
+
 .center-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:14px;}
 .big-icon{font-size:68px;animation:fl 2s ease-in-out infinite;}
 @keyframes fl{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
 .final-score{font-size:52px;font-weight:900;color:#ffd700;}
 .cf{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;}
+
 .hidden{display:none!important;}
 .err{color:#ff6b6b;font-size:14px;margin-top:6px;padding:10px 14px;background:#200610;border-radius:10px;line-height:1.6;text-align:center;}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;}
@@ -64,16 +89,10 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .prog-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,#c8102e,#ffd700);transition:width .5s;}
 .prog-bg{flex:1;background:#2a2a4a;border-radius:3px;overflow:hidden;}
 .status-bar{font-size:13px;padding:10px 14px;border-radius:10px;background:#0d0d20;margin-bottom:16px;display:flex;align-items:center;gap:8px;border-left:3px solid #ffd700;}
-.group-input-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:30px 0 10px;}
-.group-label{font-size:16px;font-weight:700;opacity:.7;text-align:center;line-height:1.6;}
-.group-num-input{width:100%;max-width:280px;background:#0d0d20;border:3px solid #333;border-radius:16px;padding:20px;font-size:48px;font-weight:900;color:#ffd700;font-family:'Inter',sans-serif;outline:none;text-align:center;-moz-appearance:textfield;}
-.group-num-input::-webkit-inner-spin-button,.group-num-input::-webkit-outer-spin-button{-webkit-appearance:none;}
-.group-num-input:focus{border-color:#ffd700;}
-.group-hint{font-size:12px;opacity:.4;text-align:center;}
-.conn-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:600;margin:8px auto;background:#0d0d20;border:1px solid #333;}
 </style>
 </head>
 <body>
+
 <div class="hdr">
   <div class="logo">ELJ<b>2030</b></div>
   <div class="hdr-r" id="hdr-r">Japan Leadership Conference</div>
@@ -87,12 +106,12 @@ body{display:flex;flex-direction:column;overflow:hidden;}
     <div class="rcard" onclick="goHost()">
       <div class="rcard-icon">🖥️</div>
       <div class="rcard-name">Host</div>
-      <div class="rcard-desc">Show QR code &amp; live leaderboard</div>
+      <div class="rcard-desc">Show QR code &amp; live leaderboard for all teams</div>
     </div>
     <div class="rcard" onclick="goParticipant()">
       <div class="rcard-icon">📱</div>
       <div class="rcard-name">Participant</div>
-      <div class="rcard-desc">Scan QR or tap here to join</div>
+      <div class="rcard-desc">Scan QR or tap here to start</div>
     </div>
   </div>
 </div>
@@ -100,12 +119,14 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 <!-- HOST -->
 <div class="pg" id="pg-host">
   <div style="font-size:24px;font-weight:900;margin-bottom:10px;">🖥️ Host Dashboard</div>
-  <div class="status-bar" id="h-status"><span class="spin"></span><span id="h-status-txt">Connecting…</span></div>
+  <div class="status-bar" id="h-status"><span class="spin"></span><span id="h-status-txt">Starting up…</span></div>
   <div class="g2">
     <div>
       <div class="card" style="text-align:center;">
         <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
-        <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;"><div style="opacity:.4;font-size:13px;"><span class="spin"></span> Generating…</div></div>
+        <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;">
+          <div style="opacity:.4;font-size:13px;"><span class="spin"></span> Generating…</div>
+        </div>
         <div id="qr-url-display" style="font-size:10px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;opacity:.7;"></div>
       </div>
       <div class="card">
@@ -131,13 +152,12 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   </div>
 </div>
 
-<!-- PARTICIPANT JOIN -->
+<!-- PARTICIPANT JOIN — shown immediately when QR scanned -->
 <div class="pg" id="pg-join">
   <div style="text-align:center;padding-top:16px;margin-bottom:8px;">
     <div style="font-size:26px;font-weight:900;">ELJ2030 Quiz</div>
     <div style="font-size:13px;opacity:.45;margin-top:6px;">Japan Leadership Conference · 15 questions</div>
   </div>
-  <div id="conn-pill" class="conn-pill" style="color:#ffd700;"><span class="spin"></span> Connecting…</div>
   <div class="group-input-wrap">
     <div class="group-label">Enter your group number<br><span style="font-size:13px;color:#ffd700;">グループ番号を入力してください</span></div>
     <input class="group-num-input" type="number" id="p-group-input" min="1" max="150" placeholder="—" inputmode="numeric" pattern="[0-9]*">
@@ -145,6 +165,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   </div>
   <div id="join-err" class="err hidden"></div>
   <button class="btn-main" id="start-btn" onclick="startQuiz()">🚀 Start Quiz！</button>
+  <div style="font-size:12px;opacity:.3;text-align:center;margin-top:16px;" id="conn-status">Connecting…</div>
 </div>
 
 <!-- QUESTION -->
@@ -184,11 +205,6 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 </div>
 
 <script>
-// ── Ably API key (free tier — 6M messages/month, no account needed for this key) ──
-// This is a free publishable key for ELJ2030 event use
-const ABLY_KEY = 'xVLyHw.3hQvNg:8Kp2mL9rT4nX1cFjWoEqYdZsBvAuGiCe';
-const CHANNEL  = 'elj2030-quiz-v1';
-
 const QS=[
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"What does a customer-centric approach in ELJ2030 primarily focus on?",jp:"ELJ2030における顧客中心のアプローチが主に焦点を当てるのは？",opts:["Reducing costs","Understanding and anticipating patient/customer needs","Increasing sales targets","Streamlining internal processes"],ojp:["コスト削減","患者・顧客のニーズを理解し先取りすること","販売目標の引き上げ","社内プロセスの効率化"],ans:1,exen:"ELJ2030 centers on deeply understanding patient and customer needs, placing them at the heart of every decision.",exjp:"ELJ2030は患者・顧客のニーズを深く理解し、意思決定の中心に置くことを重視します。"},
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"Which behavior best demonstrates Customer Excellence at ELJ?",jp:"ELJにおいて顧客エクセレンスを最もよく示す行動はどれ？",opts:["Following standard scripts","Co-creating solutions with healthcare professionals","Minimising time with customers","Focusing only on promoted products"],ojp:["標準スクリプトを使用する","医療従事者と共にソリューションを共創する","顧客との接触時間を最小化する","推奨製品のみに集中する"],ans:1,exen:"Customer Excellence means co-creating value with healthcare professionals beyond transactions.",exjp:"顧客エクセレンスとは医療従事者と共に価値を共創することです。"},
@@ -208,47 +224,58 @@ const QS=[
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
-let ablyClient=null, channel=null;
-let participants={}, myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[];
 
-function show(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');document.getElementById(id).scrollTop=0;}
+let peer=null, hostConn=null, clients={}, participants={};
+let myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[];
+
+function show(id){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  // Scroll to top whenever we switch pages
+  document.getElementById(id).scrollTop=0;
+}
 function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;msg?e.classList.remove('hidden'):e.classList.add('hidden');}
-function setStatus(html,color){document.getElementById('h-status-txt').innerHTML=html;document.getElementById('h-status').style.borderLeftColor=color||'#ffd700';}
-function setPill(html,color){const p=document.getElementById('conn-pill');if(p){p.innerHTML=html;p.style.color=color||'#ffd700';}}
-
-// ── Connect to Ably ────────────────────────────────────────────────────────
-function connectAbly(onReady){
-  try{
-    ablyClient=new Ably.Realtime({key:ABLY_KEY,clientId:'elj-'+Date.now()});
-    ablyClient.connection.on('connected',()=>{
-      channel=ablyClient.channels.get(CHANNEL);
-      onReady();
-    });
-    ablyClient.connection.on('failed',e=>{ if(onReady) onReady(e); });
-  }catch(e){ if(onReady) onReady(e); }
+function setStatus(html,color){
+  document.getElementById('h-status-txt').innerHTML=html;
+  document.getElementById('h-status').style.borderLeftColor=color||'#ffd700';
 }
 
-// ── HOST ──────────────────────────────────────────────────────────────────
+// ── HOST ───────────────────────────────────────────────────────────────────
 function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
   show('pg-host');
-  setStatus('<span class="spin"></span> Connecting…','#ffd700');
+  setStatus('<span class="spin"></span> Connecting to relay…','#ffd700');
 
-  connectAbly(err=>{
-    if(err){setStatus('❌ Connection failed: '+err,'#ff6b6b');return;}
-    setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
+  const today=new Date();
+  const fixedId='elj2030-'+today.getFullYear()+('0'+(today.getMonth()+1)).slice(-2)+('0'+today.getDate()).slice(-2);
 
-    // QR is always the same fixed URL
-    const base=window.location.href.split('?')[0];
-    const url=base+'?p=1';
-    buildQR(url);
-
-    // Subscribe to participant updates
-    channel.subscribe('participant-update', msg=>{
-      participants[msg.data.id]=msg.data;
-      renderLBData(participants);
+  function setupPeer(id){
+    peer=new Peer(id,{debug:0});
+    peer.on('open',pid=>{
+      setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
+      const base=window.location.href.split('?')[0];
+      const url=base+'?p=1&h='+encodeURIComponent(pid);
+      buildQR(url);
     });
-  });
+    peer.on('connection',conn=>{
+      conn.on('open',()=>{
+        clients[conn.peer]=conn;
+        setStatus('<span class="dot"></span> '+Object.keys(clients).length+' device(s) connected','#00ff88');
+      });
+      conn.on('data',data=>{
+        if(data.type==='update'){
+          participants[data.payload.id]=data.payload;
+          renderLBData(participants);
+        }
+      });
+      conn.on('close',()=>delete clients[conn.peer]);
+    });
+    peer.on('error',e=>{
+      if(e.type==='unavailable-id'){peer.destroy();setupPeer(null);}
+      else setStatus('⚠️ '+e.message,'#ff6b6b');
+    });
+  }
+  setupPeer(fixedId);
 }
 
 function buildQR(url){
@@ -293,7 +320,8 @@ function renderLBData(p){
     const prog=x.done?QS.length:(x.qProgress||0);
     const pct=Math.round(prog/QS.length*100);
     return `<div class="lb-row ${cls}">
-      <div class="lb-rank">${rl}</div><div class="lb-emoji">${x.emoji||'🔵'}</div>
+      <div class="lb-rank">${rl}</div>
+      <div class="lb-emoji">${x.emoji||'🔵'}</div>
       <div style="flex:1;">
         <div class="lb-name">${x.name}</div>
         <div style="font-size:11px;color:#ffd700;margin-top:2px;">${x.done?correct+'/'+QS.length+' correct':'Q'+(prog+1)+'/'+QS.length+' in progress'}</div>
@@ -310,48 +338,53 @@ function hostReset(){
   ['h-done','h-prog'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('h-avg').textContent='—';
   document.getElementById('h-qstats').innerHTML='';
-  document.getElementById('lb-list').innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';
 }
 
-// ── PARTICIPANT ───────────────────────────────────────────────────────────
+// ── PARTICIPANT ────────────────────────────────────────────────────────────
 function goParticipant(){
   document.getElementById('hdr-r').textContent='📱 Participant';
+  const params=new URLSearchParams(window.location.search);
+  const hid=params.get('h');
   show('pg-join');
-  setPill('<span class="spin"></span> Connecting…','#ffd700');
-  document.getElementById('start-btn').disabled=true;
-  document.getElementById('start-btn').innerHTML='<span class="spin"></span> Connecting…';
+  const cs=document.getElementById('conn-status');
 
-  connectAbly(err=>{
-    if(err){
-      setPill('❌ No connection','#ff6b6b');
-      document.getElementById('start-btn').disabled=false;
-      document.getElementById('start-btn').innerHTML='🚀 Start Quiz！';
-      showErr('join-err','Could not connect. Please check your internet and try again.');
-      return;
-    }
-    setPill('<span class="dot"></span> Connected ✅','#00ff88');
-    document.getElementById('start-btn').disabled=false;
-    document.getElementById('start-btn').innerHTML='🚀 Start Quiz！';
+  if(!hid){
+    cs.textContent='⚠️ No host ID in URL — scan the QR code from the host screen';
+    cs.style.opacity='1'; cs.style.color='#ff6b6b';
+    return;
+  }
+
+  cs.textContent='Connecting to host…';
+  peer=new Peer(null,{debug:0});
+  peer.on('open',()=>{
+    hostConn=peer.connect(hid,{reliable:true});
+    hostConn.on('open',()=>{
+      cs.textContent='✅ Connected to host';
+      cs.style.color='#00ff88'; cs.style.opacity='1';
+    });
+    hostConn.on('error',e=>{cs.textContent='Connection error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
   });
+  peer.on('error',e=>{cs.textContent='Error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
 }
 
-function publish(data){
-  if(channel) channel.publish('participant-update', data);
+function sendToHost(payload){
+  if(hostConn&&hostConn.open) hostConn.send({type:'update',payload});
 }
 
 function startQuiz(){
   showErr('join-err','');
   const val=parseInt(document.getElementById('p-group-input').value,10);
   if(!val||val<1||val>150){showErr('join-err','Please enter a group number between 1 and 150.\nグループ番号は1〜150の数字を入力してください。');return;}
-  if(!channel){showErr('join-err','Not connected yet. Please wait a moment.');return;}
+  if(!hostConn||!hostConn.open){showErr('join-err','Not connected to host yet. Please wait a moment and try again, or re-scan the QR code.');return;}
   myGroup='Group '+val;
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
   qIdx=0;myAnswers=[];
-  publish({id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}});
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}});
   show('pg-question');renderQ();
 }
 
+// Allow Enter key to start quiz
 document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('p-group-input').addEventListener('keydown',e=>{if(e.key==='Enter')startQuiz();});
 });
@@ -383,7 +416,7 @@ function pickAns(ai){
   myAnswers[qIdx]=ai;
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  publish({id:myId,name:myGroup,emoji:myEmoji,score,done:false,qProgress:qIdx+1,answers:answersObj});
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score,done:false,qProgress:qIdx+1,answers:answersObj});
   document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.opts[q.ans];
   document.getElementById('q-exp-en').textContent=q.exen;
   document.getElementById('q-exp-jp').textContent=q.exjp;
@@ -398,7 +431,7 @@ function nextQ(){qIdx++;if(qIdx>=QS.length){finish();return;}renderQ();}
 function finish(){
   const score=myAnswers.reduce((s,a,i)=>s+(a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  publish({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
   const correct=myAnswers.filter((a,i)=>a===QS[i].ans).length;
   document.getElementById('f-icon').textContent=score>=130?'🥇':score>=100?'🎯':score>=70?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
