@@ -246,8 +246,7 @@ function goHost(){
   show('pg-host');
   setStatus('<span class="spin"></span> Connecting to relay…','#ffd700');
 
-  const today=new Date();
-  const fixedId='elj2030-'+today.getFullYear()+('0'+(today.getMonth()+1)).slice(-2)+('0'+today.getDate()).slice(-2);
+  const fixedId='elj2030-host';
 
   function setupPeer(id){
     peer=new Peer(id,{debug:0});
