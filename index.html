@@ -353,17 +353,34 @@ function goParticipant(){
     return;
   }
 
+  const btn=document.getElementById('start-btn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span> Connecting…';
   cs.textContent='Connecting to host…';
+  cs.style.opacity='1';
+
   peer=new Peer(null,{debug:0});
   peer.on('open',()=>{
     hostConn=peer.connect(hid,{reliable:true});
     hostConn.on('open',()=>{
-      cs.textContent='✅ Connected to host';
-      cs.style.color='#00ff88'; cs.style.opacity='1';
+      cs.textContent='✅ Connected! Enter your group number and start.';
+      cs.style.color='#00ff88';
+      btn.disabled=false;
+      btn.innerHTML='🚀 Start Quiz！';
     });
-    hostConn.on('error',e=>{cs.textContent='Connection error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
+    hostConn.on('error',e=>{
+      cs.textContent='❌ Connection error: '+e.message+' — please re-scan the QR code.';
+      cs.style.color='#ff6b6b';
+      btn.disabled=false;
+      btn.innerHTML='🚀 Start Quiz！';
+    });
   });
-  peer.on('error',e=>{cs.textContent='Error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
+  peer.on('error',e=>{
+    cs.textContent='❌ Error: '+e.message+' — please re-scan the QR code.';
+    cs.style.color='#ff6b6b';
+    btn.disabled=false;
+    btn.innerHTML='🚀 Start Quiz！';
+  });
 }
 
 function sendToHost(payload){
