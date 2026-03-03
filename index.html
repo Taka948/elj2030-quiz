@@ -391,7 +391,31 @@ function startQuiz(){
   showErr('join-err','');
   const val=parseInt(document.getElementById('p-group-input').value,10);
   if(!val||val<1||val>150){showErr('join-err','Please enter a group number between 1 and 150.\nグループ番号は1〜150の数字を入力してください。');return;}
-  if(!hostConn||!hostConn.open){showErr('join-err','Not connected to host yet. Please wait a moment and try again, or re-scan the QR code.');return;}
+  // If not yet connected, wait up to 8 seconds and retry
+  if(!hostConn||!hostConn.open){
+    const btn=document.getElementById('start-btn');
+    const cs=document.getElementById('conn-status');
+    btn.disabled=true;
+    btn.innerHTML='<span class="spin"></span> Connecting…';
+    cs.textContent='Waiting for connection…';
+    cs.style.color='#ffd700';
+    let attempts=0;
+    const wait=setInterval(()=>{
+      attempts++;
+      if(hostConn&&hostConn.open){
+        clearInterval(wait);
+        btn.disabled=false;
+        btn.innerHTML='🚀 Start Quiz！';
+        startQuiz();
+      } else if(attempts>16){
+        clearInterval(wait);
+        btn.disabled=false;
+        btn.innerHTML='🚀 Start Quiz！';
+        showErr('join-err','Could not connect to host. Make sure the host screen is open and showing the QR code, then try again.\nホスト画面が開いていることを確認してください。');
+      }
+    },500);
+    return;
+  }
   myGroup='Group '+val;
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
