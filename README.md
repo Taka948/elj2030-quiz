@@ -1,292 +1,5 @@
 <!DOCTYPE html>
 <html lang="en"><head>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js" integrity="sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script>
-      (function() {
-        const originalConsole = window.console;
-        window.console = {
-          log: (...args) => {
-            originalConsole.log(...args);
-            window.parent.postMessage({ type: 'console', message: args.join(' ') }, '*');
-          },
-          error: (...args) => {
-            originalConsole.error(...args);
-            window.parent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
-          },
-          warn: (...args) => {
-            originalConsole.warn(...args);
-            window.parent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
-          }
-        };
-
-        let requestId = 0;
-        let callbacksMap = new Map();
-        let streamControllers = new Map();
-        
-        window.claude = {
-          complete: (prompt) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
-            });
-          }
-        };
-
-        window.storage = {
-          get: (key, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageGet', id, key, shared }, '*');
-            });
-          },
-          set: (key, value, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
-            });
-          },
-          delete: (key, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
-            });
-          },
-          list: (prefix, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
-            });
-          }
-        };
-
-        let pendingBlobs = new Map();
-        URL.createObjectURL = (blob) => {
-          // Store the blob and create an ID and URL for it
-          const blobId = `blob-${Date.now()}-${Math.random()}`;
-          pendingBlobs.set(blobId, blob);
-          return `blob-request://${blobId}`;
-        };
-
-        URL.revokeObjectURL = (url) => {
-          // Remove the blob from our store
-          const blobId = url.replace("blob-request://", "");
-          pendingBlobs.delete(blobId);
-        };
-
-        const getBlobFromURL = (url) => {
-          const blobId = url.replace("blob-request://", "");
-          return pendingBlobs.get(blobId);
-        };
-
-        // Override global fetch with streaming support
-        window.fetch = (url, init = {}) => {
-          return new Promise((resolve, reject) => {
-            const id = requestId++;
-            const channelId = `fetch-${id}-${Date.now()}`;
-            
-            callbacksMap.set(id, { 
-              resolve: (response) => {
-                // Create a ReadableStream for the response body
-                const stream = new ReadableStream({
-                  start(controller) {
-                    streamControllers.set(channelId, controller);
-                  },
-                  cancel() {
-                    streamControllers.delete(channelId);
-                  }
-                });
-                
-                // Create and return the Response with the stream
-                resolve(new Response(stream, {
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: response.headers
-                }));
-              },
-              reject,
-              channelId
-            });
-            
-            window.parent.postMessage({
-              type: 'proxyFetch',
-              id,
-              url,
-              init,
-              channelId
-            }, '*');
-          });
-        };
-
-        window.addEventListener('message', async (event) => {
-          if (event.data.type === 'takeScreenshot') {
-            const rootElement = document.getElementById('artifacts-component-root-html');
-            if (!rootElement) {
-              window.parent.postMessage({
-                type: 'screenshotError',
-                error: new Error('Root element not found'),
-              }, '*');
-            }
-            const screenshot = await htmlToImage.toPng(rootElement, {
-              imagePlaceholder:
-                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
-            });
-            window.parent.postMessage({
-              type: 'screenshotData',
-              data: screenshot,
-            }, '*');
-          } else if (event.data.type === 'claudeComplete') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.completion);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'proxyFetchResponse') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-              callbacksMap.delete(event.data.id);
-            } else {
-              // Initial response with headers, status, etc.
-              callback.resolve({
-                status: event.data.status,
-                statusText: event.data.statusText,
-                headers: event.data.headers
-              });
-              // Don't delete the callback yet if streaming
-              if (!event.data.body) {
-                callbacksMap.delete(event.data.id);
-              }
-            }
-          } else if (event.data.type === 'proxyFetchStream') {
-            // Handle streaming data chunks
-            const controller = streamControllers.get(event.data.channelId);
-            if (controller) {
-              if (event.data.error) {
-                controller.error(new Error(event.data.error));
-                streamControllers.delete(event.data.channelId);
-              } else if (event.data.done) {
-                controller.close();
-                streamControllers.delete(event.data.channelId);
-                // Clean up the callback
-                const callback = Array.from(callbacksMap.entries()).find(
-                  ([_, value]) => value.channelId === event.data.channelId
-                );
-                if (callback) {
-                  callbacksMap.delete(callback[0]);
-                }
-              } else if (event.data.chunk) {
-                controller.enqueue(new Uint8Array(event.data.chunk));
-              }
-            }
-          } else if (event.data.type === 'storageGet') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageSet') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageDelete') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageList') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          }
-        });
-
-        window.addEventListener('click', (event) => {
-          const isEl = event.target instanceof HTMLElement;
-          if (!isEl) return;
-    
-          // find ancestor links
-          const linkEl = event.target.closest("a");
-          if (!linkEl || !linkEl.href) return;
-    
-          event.preventDefault();
-          event.stopImmediatePropagation();
-    
-          if (linkEl.href.startsWith("blob-request:")) {
-            const blob = getBlobFromURL(linkEl.href);
-            if (!blob) return;
-            void blob.arrayBuffer().then((data) => {
-              window.parent.postMessage({
-                type: "downloadFile",
-                filename: linkEl.download,
-                data,
-                mimeType: blob.type || "application/octet-stream",
-              });
-            });
-          } else if (linkEl.href.startsWith("data:")) {
-            const [header, base64Data] = linkEl.href.split(",");
-            const mimeMatch = header.match(/data:([^;]+)/);
-            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-            const binaryString = atob(base64Data);
-            const data = Uint8Array.from(binaryString, (c) =>
-              c.charCodeAt(0),
-            ).buffer;
-            window.parent.postMessage({
-              type: "downloadFile",
-              filename: linkEl.download,
-              data,
-              mimeType,
-            });
-          } else {
-            let linkUrl;
-            try {
-              linkUrl = new URL(linkEl.href);
-            } catch (error) {
-              return;
-            }
-    
-            if (linkUrl.hostname === window.location.hostname) return;
-      
-            window.parent.postMessage({
-              type: 'openExternal',
-              href: linkEl.href,
-            }, '*');
-          }
-      });
-
-        const originalOpen = window.open;
-        window.open = function (url) {
-          window.parent.postMessage({
-            type: "openExternal",
-            href: url,
-          }, "*");
-        };
-
-        window.addEventListener('error', (event) => {
-          window.parent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
-        });
-      })();
-    </script>
-  
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0a0a1a">
@@ -298,12 +11,6 @@
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);}
 html,body{height:100%;background:#0a0a1a;color:#fff;font-family:'Inter','Noto Sans JP',sans-serif;}
 body{display:flex;flex-direction:column;overflow:hidden;}
-
-/* Download bar: visible only inside Claude preview, hidden on real sites */
-#dl-bar{background:#1a180a;border-bottom:2px solid #ffd700;padding:9px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;}
-#dl-bar span{font-size:12px;color:#ffd700;font-weight:600;}
-#dl-bar button{background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;}
-
 .hdr{background:linear-gradient(135deg,#c8102e,#8b0000);padding:calc(var(--st)+10px) 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .logo{font-size:22px;font-weight:900;letter-spacing:2px;}.logo b{color:#ffd700;}
 .hdr-r{font-size:12px;opacity:.75;text-align:right;}
@@ -326,8 +33,6 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .stat-box{text-align:center;}.stat-num{font-size:36px;font-weight:900;}.stat-lbl{font-size:12px;opacity:.5;margin-top:2px;}
 .dot{width:8px;height:8px;border-radius:50%;background:#00ff88;display:inline-block;animation:bl 1.5s infinite;}
 @keyframes bl{0%,100%{opacity:1;}50%{opacity:.2;}}
-input[type=text]{width:100%;background:#0d0d20;border:2px solid #333;border-radius:10px;padding:13px 16px;font-size:17px;color:#fff;font-family:inherit;outline:none;}
-input[type=text]:focus{border-color:#ffd700;}
 .btn-main{width:100%;padding:16px;border:none;border-radius:13px;font-size:17px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;font-family:inherit;margin-top:10px;}
 .btn-main:active{transform:scale(.98);}
 .btn-main:disabled{opacity:.5;cursor:not-allowed;transform:none;}
@@ -360,16 +65,11 @@ input[type=text]:focus{border-color:#ffd700;}
 .grp-btn:hover,.grp-btn:active,.grp-btn.sel{border-color:#ffd700;background:#1a180a;color:#ffd700;}
 .prog-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,#c8102e,#ffd700);transition:width .5s;}
 .prog-bg{flex:1;background:#2a2a4a;border-radius:3px;overflow:hidden;}
-.status-badge{display:inline-flex;align-items:center;gap:6px;background:#0d0d20;border-radius:8px;padding:6px 12px;font-size:12px;margin-top:8px;}
+.sync-ok{color:#00ff88;font-size:12px;margin-top:6px;}
+.sync-err{color:#ff6b6b;font-size:12px;margin-top:6px;background:#200610;padding:8px 12px;border-radius:8px;line-height:1.6;}
 </style>
 </head>
-<body id="artifacts-component-root-html">
-
-<!-- Download bar: only shown inside Claude (window.claude exists), hidden on GitHub Pages -->
-<div id="dl-bar" style="display: flex;">
-  <span>⬇ Download to deploy on GitHub Pages</span>
-  <button id="dl-btn" onclick="dlFile()">Download HTML</button>
-</div>
+<body>
 
 <div class="hdr">
   <div class="logo">ELJ<b>2030</b></div>
@@ -399,13 +99,13 @@ input[type=text]:focus{border-color:#ffd700;}
   <div style="max-width:960px;">
     <div style="font-size:24px;font-weight:900;margin-bottom:4px;">🖥️ Host Dashboard</div>
     <div style="font-size:13px;margin-bottom:4px;"><span class="dot"></span> <span style="color:#00ff88;">Live — participants scan QR to join</span></div>
-    <div id="sync-status" class="status-badge" style="margin-bottom:16px;">⏳ Connecting…</div>
-    <div class="g2">
+    <div id="sync-msg"></div>
+    <div style="margin-top:14px;" class="g2">
       <div>
         <div class="card" style="text-align:center;">
           <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
           <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;">
-            <div style="opacity:.4;font-size:13px;">Generating QR…</div>
+            <div style="opacity:.4;font-size:13px;"><span class="spin"></span> Setting up…</div>
           </div>
           <div id="qr-url-display" style="font-size:10px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;opacity:.7;"></div>
         </div>
@@ -503,75 +203,61 @@ const QS=[
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
-const JSONBIN_BASE='https://api.jsonbin.io/v3/b';
+
+// ── Sync via Pocketbase-free alternative: jsonblob.com ─────────────────────
+// jsonblob.com: truly free, no account, no key, permanent storage
+const JB = 'https://jsonblob.com/api/jsonBlob';
 let binId=null, myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[], pollInt=null;
 
-// ── Show download bar only inside Claude (not on GitHub Pages) ─────────────
-window.addEventListener('load', ()=>{
-  // window.claude exists only inside Claude's artifact sandbox
-  if (typeof window.claude !== 'undefined' || window.location.href.includes('claude.ai')) {
-    document.getElementById('dl-bar').style.display='flex';
-  }
-  const params=new URLSearchParams(window.location.search);
-  if (params.get('p')==='1') {
-    const bid=params.get('bid');
-    if (bid) { binId=bid; try{localStorage.setItem('elj_bin',bid);}catch(e){} }
-    goParticipant();
-  }
-});
-
-// ── Storage (JSONBin public API — no account needed) ──────────────────────
-function setSyncStatus(msg, ok){
-  const el=document.getElementById('sync-status');
+function syncMsg(msg, type){
+  const el=document.getElementById('sync-msg');
   if(!el) return;
-  el.textContent=msg;
-  el.style.color=ok?'#00ff88':'#ffd700';
+  el.className = type==='ok'?'sync-ok':type==='err'?'sync-err':'';
+  el.textContent = msg;
 }
 
 async function initBin(){
-  // Try localStorage first
-  if(!binId){ try{binId=localStorage.getItem('elj_bin')||null;}catch(e){} }
-  if(binId){ setSyncStatus('✅ Session ready',true); return binId; }
-  try {
-    setSyncStatus('⏳ Creating session…', false);
-    const r=await fetch(JSONBIN_BASE,{
+  try{ binId=localStorage.getItem('elj_bin')||null; }catch(e){}
+  if(binId){ syncMsg('✅ Session active','ok'); return true; }
+  try{
+    syncMsg('⏳ Creating session…','');
+    const r=await fetch(JB,{
       method:'POST',
-      headers:{'Content-Type':'application/json','X-Bin-Private':'false','X-Bin-Name':'ELJ2030'},
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
       body:JSON.stringify({participants:{}})
     });
     if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    binId=d.metadata?.id||null;
-    if(!binId) throw new Error('No ID returned');
+    // ID is in the Location header
+    const loc=r.headers.get('Location')||'';
+    binId=loc.split('/').pop()||null;
+    if(!binId) throw new Error('No ID in response');
     try{localStorage.setItem('elj_bin',binId);}catch(e){}
-    setSyncStatus('✅ Session ready',true);
-    return binId;
-  } catch(e){
-    setSyncStatus('⚠️ Sync error: '+e.message, false);
-    return null;
+    syncMsg('✅ Session ready — QR generated','ok');
+    return true;
+  }catch(e){
+    syncMsg('❌ Could not create session: '+e.message+'\nCheck internet connection and try again.','err');
+    return false;
   }
 }
 
 async function getSession(){
   if(!binId) return {participants:{}};
   try{
-    const r=await fetch(JSONBIN_BASE+'/'+binId+'/latest');
+    const r=await fetch(JB+'/'+binId,{headers:{'Accept':'application/json'}});
     if(!r.ok) throw new Error('HTTP '+r.status);
-    const d=await r.json();
-    return d.record||{participants:{}};
+    return await r.json();
   }catch(e){ return {participants:{}}; }
 }
 
 async function setSession(data){
   if(!binId) return;
   try{
-    const r=await fetch(JSONBIN_BASE+'/'+binId,{
+    await fetch(JB+'/'+binId,{
       method:'PUT',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Accept':'application/json'},
       body:JSON.stringify(data)
     });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-  }catch(e){ console.error('setSession:',e); }
+  }catch(e){ console.warn('setSession failed:',e); }
 }
 
 // ── UI ─────────────────────────────────────────────────────────────────────
@@ -582,10 +268,10 @@ function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;m
 async function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
   show('pg-host');
-  const id=await initBin();
-  if(!id){ setSyncStatus('❌ Could not create session. Check internet.',false); return; }
+  const ok=await initBin();
+  if(!ok) return;
   const base=window.location.href.split('?')[0];
-  const url=base+'?p=1&bid='+encodeURIComponent(id);
+  const url=base+'?p=1&bid='+encodeURIComponent(binId);
   buildQR(url);
   clearInterval(pollInt);
   pollInt=setInterval(refreshLB,2000);
@@ -600,9 +286,9 @@ function buildQR(url){
     const c=document.createElement('div');
     c.className='qr-container';
     wrap.appendChild(c);
-    new QRCode(c,{text:url,width:220,height:220,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+    new QRCode(c,{text:url,width:220,height:220,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
   }catch(e){
-    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.6;line-height:1.7;">${url}</div>`;
+    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.7;line-height:1.8;">QR library error.<br>Direct URL:<br><b>${url}</b></div>`;
   }
 }
 
@@ -611,15 +297,15 @@ async function refreshLB(){
   renderLBData(data.participants||{});
 }
 
-function renderLBData(participants){
-  const parts=Object.values(participants);
-  const done=parts.filter(p=>p.done);
+function renderLBData(p){
+  const parts=Object.values(p);
+  const done=parts.filter(x=>x.done);
   document.getElementById('h-done').textContent=done.length;
-  document.getElementById('h-prog').textContent=parts.filter(p=>!p.done).length;
+  document.getElementById('h-prog').textContent=parts.filter(x=>!x.done).length;
   if(done.length){
-    document.getElementById('h-avg').textContent=Math.round(done.reduce((s,p)=>s+p.score,0)/done.length);
+    document.getElementById('h-avg').textContent=Math.round(done.reduce((s,x)=>s+x.score,0)/done.length);
     document.getElementById('h-qstats').innerHTML=QS.map((_,i)=>{
-      const c=done.filter(p=>Number(p.answers[i])===QS[i].ans).length;
+      const c=done.filter(x=>Number(x.answers[i])===QS[i].ans).length;
       const pct=Math.round(c/done.length*100);
       const col=pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
       return `<div style="background:#0d0d20;border-radius:6px;padding:5px 8px;font-size:11px;color:${col};font-weight:700;">Q${i+1} ${pct}%</div>`;
@@ -628,27 +314,26 @@ function renderLBData(participants){
     document.getElementById('h-avg').textContent='—';
     document.getElementById('h-qstats').innerHTML='';
   }
-  const allActive=[...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
-  document.getElementById('lb-count').textContent=allActive.length?allActive.length+' participant'+(allActive.length>1?'s':''):'';
+  const all=[...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
+  document.getElementById('lb-count').textContent=all.length?all.length+' participant'+(all.length>1?'s':''):'';
   const list=document.getElementById('lb-list');
-  if(!allActive.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';return;}
-  const doneRanked=[...done].sort((a,b)=>b.score-a.score);
-  list.innerHTML=allActive.map(p=>{
-    const ri=doneRanked.findIndex(d=>d.id===p.id);
-    const rankLabel=p.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
-    const cls=p.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
-    const correct=QS.filter((_,qi)=>Number(p.answers[qi])===QS[qi].ans).length;
-    const progress=p.done?QS.length:(p.qProgress||0);
-    const pct=Math.round(progress/QS.length*100);
+  if(!all.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';return;}
+  const dr=[...done].sort((a,b)=>b.score-a.score);
+  list.innerHTML=all.map(x=>{
+    const ri=dr.findIndex(d=>d.id===x.id);
+    const rl=x.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
+    const cls=x.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
+    const correct=QS.filter((_,qi)=>Number(x.answers[qi])===QS[qi].ans).length;
+    const prog=x.done?QS.length:(x.qProgress||0);
+    const pct=Math.round(prog/QS.length*100);
     return `<div class="lb-row ${cls}">
-      <div class="lb-rank">${rankLabel}</div>
-      <div class="lb-emoji">${p.emoji||'🔵'}</div>
+      <div class="lb-rank">${rl}</div><div class="lb-emoji">${x.emoji||'🔵'}</div>
       <div style="flex:1;">
-        <div class="lb-name">${p.name}</div>
-        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${p.done?correct+'/'+QS.length+' correct':'Q'+(progress+1)+'/'+QS.length+' in progress'}</div>
-        ${!p.done?`<div style="display:flex;align-items:center;gap:6px;margin-top:5px;"><div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div><span style="font-size:11px;opacity:.4;">${pct}%</span></div>`:''}
+        <div class="lb-name">${x.name}</div>
+        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${x.done?correct+'/'+QS.length+' correct':'Q'+(prog+1)+'/'+QS.length+' in progress'}</div>
+        ${!x.done?`<div style="display:flex;align-items:center;gap:6px;margin-top:5px;"><div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div><span style="font-size:11px;opacity:.4;">${pct}%</span></div>`:''}
       </div>
-      <div style="text-align:right;"><div class="lb-score">${p.score}</div><div style="font-size:12px;opacity:.5;">pts</div></div>
+      <div style="text-align:right;"><div class="lb-score">${x.score}</div><div style="font-size:12px;opacity:.5;">pts</div></div>
     </div>`;
   }).join('');
 }
@@ -657,15 +342,15 @@ async function hostReset(){
   if(!confirm('Reset all data?\n全データをリセットしますか？')) return;
   try{localStorage.removeItem('elj_bin');}catch(e){}
   binId=null;
-  await initBin();
+  const ok=await initBin();
+  if(!ok) return;
   renderLBData({});
   ['h-done','h-prog'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('h-avg').textContent='—';
   document.getElementById('h-qstats').innerHTML='';
   document.getElementById('lb-list').innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';
-  // Rebuild QR with new binId
   const base=window.location.href.split('?')[0];
-  buildQR(base+'?p=1&bid='+encodeURIComponent(binId||''));
+  buildQR(base+'?p=1&bid='+encodeURIComponent(binId));
 }
 
 // ── PARTICIPANT ───────────────────────────────────────────────────────────
@@ -685,9 +370,9 @@ function goParticipant(){
 async function startQuiz(){
   showErr('join-err','');
   if(!myGroup){showErr('join-err','Please select your group / グループを選んでください');return;}
-  if(!binId){showErr('join-err','No session found. Please re-scan the QR code.');return;}
+  if(!binId){showErr('join-err','Session not found. Please re-scan the QR code.');return;}
   const btn=document.getElementById('start-btn');
-  btn.disabled=true;btn.innerHTML='<span class="spin"></span>Starting…';
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span>Joining…';
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
   qIdx=0;myAnswers=[];
@@ -779,13 +464,14 @@ function launchConfetti(){
   }
 }
 
-function dlFile(){
-  const html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  const blob=new Blob([html],{type:'text/html'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='index.html';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-  document.getElementById('dl-btn').textContent='✅ Downloaded!';
-}
+// ── Boot ───────────────────────────────────────────────────────────────────
+window.addEventListener('load',()=>{
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('p')==='1'){
+    const bid=params.get('bid');
+    if(bid){ binId=bid; try{localStorage.setItem('elj_bin',bid);}catch(e){} }
+    goParticipant();
+  }
+});
 </script>
-
 </body></html>
