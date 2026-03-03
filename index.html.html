@@ -1,318 +1,45 @@
 <!DOCTYPE html>
 <html lang="en"><head>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js" integrity="sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script>
-      (function() {
-        const originalConsole = window.console;
-        window.console = {
-          log: (...args) => {
-            originalConsole.log(...args);
-            window.parent.postMessage({ type: 'console', message: args.join(' ') }, '*');
-          },
-          error: (...args) => {
-            originalConsole.error(...args);
-            window.parent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
-          },
-          warn: (...args) => {
-            originalConsole.warn(...args);
-            window.parent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
-          }
-        };
-
-        let requestId = 0;
-        let callbacksMap = new Map();
-        let streamControllers = new Map();
-        
-        window.claude = {
-          complete: (prompt) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
-            });
-          }
-        };
-
-        window.storage = {
-          get: (key, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageGet', id, key, shared }, '*');
-            });
-          },
-          set: (key, value, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
-            });
-          },
-          delete: (key, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
-            });
-          },
-          list: (prefix, shared = false) => {
-            return new Promise((resolve, reject) => {
-              const id = requestId++;
-              callbacksMap.set(id, { resolve, reject });
-              window.parent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
-            });
-          }
-        };
-
-        let pendingBlobs = new Map();
-        URL.createObjectURL = (blob) => {
-          // Store the blob and create an ID and URL for it
-          const blobId = `blob-${Date.now()}-${Math.random()}`;
-          pendingBlobs.set(blobId, blob);
-          return `blob-request://${blobId}`;
-        };
-
-        URL.revokeObjectURL = (url) => {
-          // Remove the blob from our store
-          const blobId = url.replace("blob-request://", "");
-          pendingBlobs.delete(blobId);
-        };
-
-        const getBlobFromURL = (url) => {
-          const blobId = url.replace("blob-request://", "");
-          return pendingBlobs.get(blobId);
-        };
-
-        // Override global fetch with streaming support
-        window.fetch = (url, init = {}) => {
-          return new Promise((resolve, reject) => {
-            const id = requestId++;
-            const channelId = `fetch-${id}-${Date.now()}`;
-            
-            callbacksMap.set(id, { 
-              resolve: (response) => {
-                // Create a ReadableStream for the response body
-                const stream = new ReadableStream({
-                  start(controller) {
-                    streamControllers.set(channelId, controller);
-                  },
-                  cancel() {
-                    streamControllers.delete(channelId);
-                  }
-                });
-                
-                // Create and return the Response with the stream
-                resolve(new Response(stream, {
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: response.headers
-                }));
-              },
-              reject,
-              channelId
-            });
-            
-            window.parent.postMessage({
-              type: 'proxyFetch',
-              id,
-              url,
-              init,
-              channelId
-            }, '*');
-          });
-        };
-
-        window.addEventListener('message', async (event) => {
-          if (event.data.type === 'takeScreenshot') {
-            const rootElement = document.getElementById('artifacts-component-root-html');
-            if (!rootElement) {
-              window.parent.postMessage({
-                type: 'screenshotError',
-                error: new Error('Root element not found'),
-              }, '*');
-            }
-            const screenshot = await htmlToImage.toPng(rootElement, {
-              imagePlaceholder:
-                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
-            });
-            window.parent.postMessage({
-              type: 'screenshotData',
-              data: screenshot,
-            }, '*');
-          } else if (event.data.type === 'claudeComplete') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.completion);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'proxyFetchResponse') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-              callbacksMap.delete(event.data.id);
-            } else {
-              // Initial response with headers, status, etc.
-              callback.resolve({
-                status: event.data.status,
-                statusText: event.data.statusText,
-                headers: event.data.headers
-              });
-              // Don't delete the callback yet if streaming
-              if (!event.data.body) {
-                callbacksMap.delete(event.data.id);
-              }
-            }
-          } else if (event.data.type === 'proxyFetchStream') {
-            // Handle streaming data chunks
-            const controller = streamControllers.get(event.data.channelId);
-            if (controller) {
-              if (event.data.error) {
-                controller.error(new Error(event.data.error));
-                streamControllers.delete(event.data.channelId);
-              } else if (event.data.done) {
-                controller.close();
-                streamControllers.delete(event.data.channelId);
-                // Clean up the callback
-                const callback = Array.from(callbacksMap.entries()).find(
-                  ([_, value]) => value.channelId === event.data.channelId
-                );
-                if (callback) {
-                  callbacksMap.delete(callback[0]);
-                }
-              } else if (event.data.chunk) {
-                controller.enqueue(new Uint8Array(event.data.chunk));
-              }
-            }
-          } else if (event.data.type === 'storageGet') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageSet') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageDelete') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          } else if (event.data.type === 'storageList') {
-            const callback = callbacksMap.get(event.data.id);
-            if (event.data.error) {
-              callback.reject(new Error(event.data.error));
-            } else {
-              callback.resolve(event.data.result);
-            }
-            callbacksMap.delete(event.data.id);
-          }
-        });
-
-        window.addEventListener('click', (event) => {
-          const isEl = event.target instanceof HTMLElement;
-          if (!isEl) return;
-    
-          // find ancestor links
-          const linkEl = event.target.closest("a");
-          if (!linkEl || !linkEl.href) return;
-    
-          event.preventDefault();
-          event.stopImmediatePropagation();
-    
-          if (linkEl.href.startsWith("blob-request:")) {
-            const blob = getBlobFromURL(linkEl.href);
-            if (!blob) return;
-            void blob.arrayBuffer().then((data) => {
-              window.parent.postMessage({
-                type: "downloadFile",
-                filename: linkEl.download,
-                data,
-                mimeType: blob.type || "application/octet-stream",
-              });
-            });
-          } else if (linkEl.href.startsWith("data:")) {
-            const [header, base64Data] = linkEl.href.split(",");
-            const mimeMatch = header.match(/data:([^;]+)/);
-            const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-            const binaryString = atob(base64Data);
-            const data = Uint8Array.from(binaryString, (c) =>
-              c.charCodeAt(0),
-            ).buffer;
-            window.parent.postMessage({
-              type: "downloadFile",
-              filename: linkEl.download,
-              data,
-              mimeType,
-            });
-          } else {
-            let linkUrl;
-            try {
-              linkUrl = new URL(linkEl.href);
-            } catch (error) {
-              return;
-            }
-    
-            if (linkUrl.hostname === window.location.hostname) return;
-      
-            window.parent.postMessage({
-              type: 'openExternal',
-              href: linkEl.href,
-            }, '*');
-          }
-      });
-
-        const originalOpen = window.open;
-        window.open = function (url) {
-          window.parent.postMessage({
-            type: "openExternal",
-            href: url,
-          }, "*");
-        };
-
-        window.addEventListener('error', (event) => {
-          window.parent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
-        });
-      })();
-    </script>
-  
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0a0a1a">
 <title>ELJ2030 Quiz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Inter:wght@400;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);}
 html,body{height:100%;background:#0a0a1a;color:#fff;font-family:'Inter','Noto Sans JP',sans-serif;}
+
+/* Body is just a flex column — pages handle their own scroll */
 body{display:flex;flex-direction:column;overflow:hidden;}
-.hdr{background:linear-gradient(135deg,#c8102e,#8b0000);padding:calc(var(--st)+10px) 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+
+.hdr{background:linear-gradient(135deg,#c8102e,#8b0000);padding:calc(var(--st)+10px) 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;min-height:50px;}
 .logo{font-size:22px;font-weight:900;letter-spacing:2px;}.logo b{color:#ffd700;}
 .hdr-r{font-size:12px;opacity:.75;text-align:right;}
-.pg{display:none;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 20px calc(var(--sb)+20px);}
-.pg.on{display:block;}
-#pg-role.on{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:20px;min-height:calc(100vh - 80px);}
+
+/* Each page fills remaining space and scrolls independently */
+.pg{display:none;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 20px calc(var(--sb)+40px);}
+.pg.on{display:flex;flex-direction:column;}
+
+/* Role picker centered */
+#pg-role{align-items:center;justify-content:center;text-align:center;gap:20px;}
+
+/* Join page: just column, scrollable */
+#pg-join{gap:0;}
+
 .rcards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:560px;width:100%;}
 .rcard{flex:1;min-width:200px;background:#1a1a2e;border:2px solid #333;border-radius:20px;padding:28px 18px;cursor:pointer;transition:all .2s;}
 .rcard:hover,.rcard:active{border-color:#ffd700;transform:scale(1.03);}
 .rcard-icon{font-size:46px;margin-bottom:12px;}
 .rcard-name{font-size:20px;font-weight:700;margin-bottom:6px;}
 .rcard-desc{font-size:12px;opacity:.5;line-height:1.6;}
+
 .card{background:#1a1a2e;border-radius:16px;padding:18px;margin-bottom:14px;}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:960px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:960px;width:100%;}
 @media(max-width:640px){.g2{grid-template-columns:1fr;}}
+
 .lb-row{display:flex;align-items:center;background:#1a1a2e;border-radius:13px;padding:14px 18px;margin-bottom:10px;border:2px solid #2a2a4a;}
 .lb-row.r1{border-color:#ffd700;background:#1a180a;}.lb-row.r2{border-color:#c0c0c0;background:#141418;}.lb-row.r3{border-color:#cd7f32;background:#181208;}
 .lb-rank{font-size:26px;font-weight:900;width:50px;}.lb-emoji{font-size:26px;margin:0 12px;}.lb-name{flex:1;font-size:17px;font-weight:700;}
@@ -320,12 +47,20 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .stat-box{text-align:center;}.stat-num{font-size:36px;font-weight:900;}.stat-lbl{font-size:12px;opacity:.5;margin-top:2px;}
 .dot{width:8px;height:8px;border-radius:50%;background:#00ff88;display:inline-block;animation:bl 1.5s infinite;}
 @keyframes bl{0%,100%{opacity:1;}50%{opacity:.2;}}
-input[type=text]{width:100%;background:#0d0d20;border:2px solid #333;border-radius:10px;padding:13px 16px;font-size:17px;color:#fff;font-family:inherit;outline:none;}
-input[type=text]:focus{border-color:#ffd700;}
-.btn-main{width:100%;padding:16px;border:none;border-radius:13px;font-size:17px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;font-family:inherit;margin-top:10px;}
+
+/* Big number input for group */
+.group-input-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px 0 10px;}
+.group-label{font-size:16px;font-weight:700;opacity:.7;text-align:center;line-height:1.6;}
+.group-num-input{width:100%;max-width:280px;background:#0d0d20;border:3px solid #333;border-radius:16px;padding:20px;font-size:48px;font-weight:900;color:#ffd700;font-family:'Inter',sans-serif;outline:none;text-align:center;-moz-appearance:textfield;}
+.group-num-input::-webkit-inner-spin-button,.group-num-input::-webkit-outer-spin-button{-webkit-appearance:none;}
+.group-num-input:focus{border-color:#ffd700;}
+.group-hint{font-size:12px;opacity:.4;text-align:center;}
+
+.btn-main{width:100%;padding:18px;border:none;border-radius:13px;font-size:18px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;font-family:inherit;margin-top:8px;letter-spacing:.5px;}
 .btn-main:active{transform:scale(.98);}
 .btn-main:disabled{opacity:.5;cursor:not-allowed;transform:none;}
 .btn-next{width:100%;padding:14px;border:none;border-radius:13px;font-size:16px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#1a5a3a,#00aa55);color:#fff;font-family:inherit;margin-top:8px;}
+
 .q-badge{display:inline-block;background:#c8102e;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;}
 .pbar-wrap{background:#1a1a2e;border-radius:6px;height:8px;overflow:hidden;margin:10px 0 16px;}
 .pbar{height:100%;background:linear-gradient(90deg,#c8102e,#ffd700);border-radius:6px;transition:width .4s;}
@@ -339,130 +74,98 @@ input[type=text]:focus{border-color:#ffd700;}
 .opt-jp{font-size:11px;opacity:.5;margin-top:3px;}
 .exp-box{background:#062016;border:2px solid #00aa55;border-radius:12px;padding:14px;margin:12px 0 8px;font-size:13px;line-height:1.6;}
 .exp-jp{font-size:12px;opacity:.6;margin-top:5px;}
-.center-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:65vh;text-align:center;gap:14px;}
+
+.center-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:14px;}
 .big-icon{font-size:68px;animation:fl 2s ease-in-out infinite;}
 @keyframes fl{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
 .final-score{font-size:52px;font-weight:900;color:#ffd700;}
 .cf{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999;}
+
 .hidden{display:none!important;}
-.err{color:#ff6b6b;font-size:13px;margin-top:8px;padding:8px 12px;background:#200610;border-radius:8px;}
+.err{color:#ff6b6b;font-size:14px;margin-top:6px;padding:10px 14px;background:#200610;border-radius:10px;line-height:1.6;text-align:center;}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .qr-container{background:#fff;padding:14px;border-radius:16px;display:inline-block;}
-.group-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px;}
-.grp-btn{background:#1a1a2e;border:2px solid #2a2a4a;border-radius:12px;padding:14px 8px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;font-family:inherit;transition:all .15s;text-align:center;}
-.grp-btn:hover,.grp-btn:active,.grp-btn.sel{border-color:#ffd700;background:#1a180a;color:#ffd700;}
 .prog-fill{height:6px;border-radius:3px;background:linear-gradient(90deg,#c8102e,#ffd700);transition:width .5s;}
 .prog-bg{flex:1;background:#2a2a4a;border-radius:3px;overflow:hidden;}
-/* URL setup modal */
-.modal-bg{position:fixed;inset:0;background:#000a;z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;}
-.modal{background:#1a1a2e;border:2px solid #ffd700;border-radius:20px;padding:28px 24px;max-width:440px;width:100%;}
-.modal h2{font-size:20px;font-weight:900;margin-bottom:8px;}
-.modal p{font-size:13px;opacity:.6;line-height:1.6;margin-bottom:18px;}
-.url-steps{background:#0d0d20;border-radius:12px;padding:14px;margin-bottom:18px;font-size:13px;line-height:2;}
-.url-steps b{color:#ffd700;}
+.status-bar{font-size:13px;padding:10px 14px;border-radius:10px;background:#0d0d20;margin-bottom:16px;display:flex;align-items:center;gap:8px;border-left:3px solid #ffd700;}
 </style>
 </head>
-<body id="artifacts-component-root-html">
+<body>
 
 <div class="hdr">
   <div class="logo">ELJ<b>2030</b></div>
   <div class="hdr-r" id="hdr-r">Japan Leadership Conference</div>
 </div>
 
-<!-- URL SETUP MODAL (host only, first time) -->
-<div class="modal-bg hidden" id="url-modal">
-  <div class="modal">
-    <h2>📡 Set Quiz URL</h2>
-    <p>For participants to scan the QR code, they need a real public URL. Enter the URL where <strong>this HTML file is hosted</strong>.</p>
-    <div class="url-steps">
-      <b>Quickest option — Netlify Drop:</b><br>
-      1. Download this page (⬇ below)<br>
-      2. Go to <b>drop.netlify.com</b><br>
-      3. Drag the file → get a free URL<br>
-      4. Paste that URL here
-    </div>
-    <label style="font-size:12px;opacity:.5;display:block;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Hosted URL (must start with https://)</label>
-    <input type="text" id="url-input" placeholder="https://your-quiz.netlify.app" autocomplete="off" autocorrect="off" spellcheck="false">
-    <div id="url-err" class="err hidden" style="margin-bottom:0;"></div>
-    <button class="btn-main" onclick="saveUrl()" style="margin-top:14px;">✅ Save &amp; Show QR</button>
-    <button onclick="skipUrl()" style="width:100%;padding:12px;border:none;border-radius:12px;background:transparent;color:#fff;font-family:inherit;font-size:14px;opacity:.5;cursor:pointer;margin-top:8px;">Skip (QR won't work on other devices)</button>
-  </div>
-</div>
-
-<!-- DOWNLOAD BUTTON -->
-<div style="background:#1a180a;border-bottom:2px solid #ffd700;padding:9px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;">
-  <span style="font-size:12px;color:#ffd700;font-weight:600;">⬇ Save this file to host it publicly so phones can scan the QR</span>
-  <button onclick="dlFile()" style="background:linear-gradient(135deg,#c8102e,#ff3355);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;">Download HTML</button>
-</div>
-
 <!-- ROLE PICKER -->
 <div class="pg on" id="pg-role">
-  <div style="font-size:26px;font-weight:900;margin-bottom:6px;">ELJ2030 Quiz</div>
-  <div style="font-size:14px;opacity:.45;margin-bottom:24px;">Japan Leadership Conference</div>
+  <div style="font-size:28px;font-weight:900;margin-bottom:6px;">ELJ2030 Quiz</div>
+  <div style="font-size:14px;opacity:.45;margin-bottom:28px;">Japan Leadership Conference</div>
   <div class="rcards">
     <div class="rcard" onclick="goHost()">
       <div class="rcard-icon">🖥️</div>
       <div class="rcard-name">Host</div>
-      <div class="rcard-desc">Show QR code &amp; live leaderboard</div>
+      <div class="rcard-desc">Show QR code &amp; live leaderboard for all teams</div>
     </div>
     <div class="rcard" onclick="goParticipant()">
       <div class="rcard-icon">📱</div>
       <div class="rcard-name">Participant</div>
-      <div class="rcard-desc">Scan QR or tap here to join the quiz</div>
+      <div class="rcard-desc">Scan QR or tap here to start</div>
     </div>
   </div>
 </div>
 
 <!-- HOST -->
 <div class="pg" id="pg-host">
-  <div style="max-width:960px;">
-    <div style="font-size:24px;font-weight:900;margin-bottom:4px;">🖥️ Host Dashboard</div>
-    <div style="font-size:13px;margin-bottom:18px;"><span class="dot"></span> <span style="color:#00ff88;">Live — participants scan QR to join</span></div>
-    <div class="g2">
-      <div>
-        <div class="card" style="text-align:center;">
-          <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
-          <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:230px;"></div>
-          <div id="qr-url-display" style="font-size:11px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;"></div>
-          <button onclick="changeUrl()" style="margin-top:10px;padding:6px 14px;border:none;border-radius:8px;background:#2a2a4a;color:#fff;font-size:11px;font-family:inherit;cursor:pointer;opacity:.7;">✏️ Change URL</button>
+  <div style="font-size:24px;font-weight:900;margin-bottom:10px;">🖥️ Host Dashboard</div>
+  <div class="status-bar" id="h-status"><span class="spin"></span><span id="h-status-txt">Starting up…</span></div>
+  <div class="g2">
+    <div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:11px;opacity:.5;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">📱 Scan to join — any iPhone</div>
+        <div id="qr-wrap" style="display:flex;align-items:center;justify-content:center;min-height:240px;">
+          <div style="opacity:.4;font-size:13px;"><span class="spin"></span> Generating…</div>
         </div>
-        <div class="card">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-            <div class="stat-box"><div class="stat-num" style="color:#00ff88;" id="h-done">0</div><div class="stat-lbl">Finished</div></div>
-            <div class="stat-box"><div class="stat-num" style="color:#ffd700;" id="h-prog">0</div><div class="stat-lbl">In Progress</div></div>
-            <div class="stat-box"><div class="stat-num" style="color:#4fc3f7;" id="h-avg">—</div><div class="stat-lbl">Avg Score</div></div>
-          </div>
-        </div>
-        <div class="card">
-          <div style="font-size:12px;opacity:.5;margin-bottom:10px;">Per-question accuracy</div>
-          <div id="h-qstats" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-        </div>
-        <button onclick="hostReset()" style="padding:10px 20px;border:none;border-radius:10px;background:#2a2a4a;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;">🔄 Reset All</button>
+        <div id="qr-url-display" style="font-size:10px;color:#ffd700;margin-top:10px;word-break:break-all;padding:0 8px;opacity:.7;"></div>
       </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <div style="font-size:18px;font-weight:700;">🏆 Leaderboard</div>
-          <div id="lb-count" style="font-size:13px;opacity:.5;"></div>
+      <div class="card">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div class="stat-box"><div class="stat-num" style="color:#00ff88;" id="h-done">0</div><div class="stat-lbl">Finished</div></div>
+          <div class="stat-box"><div class="stat-num" style="color:#ffd700;" id="h-prog">0</div><div class="stat-lbl">In Progress</div></div>
+          <div class="stat-box"><div class="stat-num" style="color:#4fc3f7;" id="h-avg">—</div><div class="stat-lbl">Avg Score</div></div>
         </div>
-        <div id="lb-list"><div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div></div>
       </div>
+      <div class="card">
+        <div style="font-size:12px;opacity:.5;margin-bottom:10px;">Per-question accuracy</div>
+        <div id="h-qstats" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+      <button onclick="hostReset()" style="padding:10px 20px;border:none;border-radius:10px;background:#2a2a4a;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">🔄 Reset All</button>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:18px;font-weight:700;">🏆 Leaderboard</div>
+        <div id="lb-count" style="font-size:13px;opacity:.5;"></div>
+      </div>
+      <div id="lb-list"><div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div></div>
     </div>
   </div>
 </div>
 
-<!-- PARTICIPANT JOIN -->
+<!-- PARTICIPANT JOIN — shown immediately when QR scanned -->
 <div class="pg" id="pg-join">
-  <div style="text-align:center;padding-top:8px;margin-bottom:24px;">
-    <div style="font-size:24px;font-weight:900;">Welcome! ようこそ</div>
-    <div style="font-size:13px;opacity:.45;margin-top:4px;">ELJ2030 Quiz · 15 questions</div>
+  <div style="text-align:center;padding-top:16px;margin-bottom:8px;">
+    <div style="font-size:26px;font-weight:900;">ELJ2030 Quiz</div>
+    <div style="font-size:13px;opacity:.45;margin-top:6px;">Japan Leadership Conference · 15 questions</div>
   </div>
-  <div class="card">
-    <div style="font-size:13px;font-weight:700;margin-bottom:12px;">Select your group number<br><span style="font-size:11px;opacity:.5;font-weight:400;">グループ番号を選んでください</span></div>
-    <div class="group-grid" id="group-grid"></div>
+  <div class="group-input-wrap">
+    <div class="group-label">Enter your group number<br><span style="font-size:13px;color:#ffd700;">グループ番号を入力してください</span></div>
+    <input class="group-num-input" type="number" id="p-group-input" min="1" max="150" placeholder="—" inputmode="numeric" pattern="[0-9]*">
+    <div class="group-hint">Groups 1 to 150</div>
   </div>
   <div id="join-err" class="err hidden"></div>
-  <button class="btn-main" id="start-btn" onclick="startQuiz()">🚀 Start Quiz / クイズを始める</button>
+  <button class="btn-main" id="start-btn" onclick="startQuiz()">🚀 Start Quiz！</button>
+  <div style="font-size:12px;opacity:.3;text-align:center;margin-top:16px;" id="conn-status">Connecting…</div>
 </div>
 
 <!-- QUESTION -->
@@ -489,14 +192,14 @@ input[type=text]:focus{border-color:#ffd700;}
     <div style="font-size:26px;font-weight:900;">🎉 Quiz Complete!</div>
     <div style="font-size:13px;opacity:.5;">お疲れ様でした！</div>
     <div class="big-icon" id="f-icon"></div>
-    <div style="font-size:17px;font-weight:700;" id="f-name"></div>
+    <div style="font-size:20px;font-weight:900;" id="f-name"></div>
     <div class="final-score" id="f-score"></div>
-    <div style="font-size:13px;opacity:.55;" id="f-rank"></div>
+    <div style="font-size:15px;color:#ffd700;font-weight:700;" id="f-rank"></div>
     <div style="background:#1a1a2e;border-radius:14px;padding:16px;width:100%;max-width:380px;">
       <div style="font-size:12px;font-weight:700;opacity:.6;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Your answers</div>
       <div id="f-breakdown"></div>
     </div>
-    <div style="font-size:13px;opacity:.45;text-align:center;line-height:1.7;">Thank you for participating!<br>ご参加ありがとうございました！</div>
+    <div style="font-size:13px;opacity:.45;text-align:center;line-height:1.8;">Thank you for participating!<br>ご参加ありがとうございました！<br><br>📊 Check the host screen for the final ranking!</div>
   </div>
   <div class="cf" id="cf"></div>
 </div>
@@ -521,64 +224,58 @@ const QS=[
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
-const SESSION_KEY='elj2030_session_v2';
-const POLL_MS=1500;
-const URL_STORAGE_KEY='elj2030_host_url';
 
-let myId='',myGroup='',myEmoji='',qIdx=0,myAnswers=[],pollInt=null;
+let peer=null, hostConn=null, clients={}, participants={};
+let myId='', myGroup='', myEmoji='', qIdx=0, myAnswers=[];
 
-// ── UI ─────────────────────────────────────────────────────────────────────
-function show(id){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');}
+function show(id){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  // Scroll to top whenever we switch pages
+  document.getElementById(id).scrollTop=0;
+}
 function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;msg?e.classList.remove('hidden'):e.classList.add('hidden');}
-
-// ── Storage ────────────────────────────────────────────────────────────────
-async function getSession(){
-  try{const r=await window.storage.get(SESSION_KEY,true);return r?JSON.parse(r.value):{participants:{}};}
-  catch(e){return{participants:{}};}
-}
-async function setSession(data){
-  try{await window.storage.set(SESSION_KEY,JSON.stringify(data),true);}catch(e){}
+function setStatus(html,color){
+  document.getElementById('h-status-txt').innerHTML=html;
+  document.getElementById('h-status').style.borderLeftColor=color||'#ffd700';
 }
 
-// ── URL modal ──────────────────────────────────────────────────────────────
-let savedUrl='';
-
+// ── HOST ───────────────────────────────────────────────────────────────────
 function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
-  // Check if we already have a saved URL
-  try{savedUrl=localStorage.getItem(URL_STORAGE_KEY)||'';}catch(e){}
-  if(savedUrl){
-    show('pg-host');
-    buildQR(savedUrl);
-    startHostPolling();
-  } else {
-    document.getElementById('url-modal').classList.remove('hidden');
+  show('pg-host');
+  setStatus('<span class="spin"></span> Connecting to relay…','#ffd700');
+
+  const today=new Date();
+  const fixedId='elj2030-'+today.getFullYear()+('0'+(today.getMonth()+1)).slice(-2)+('0'+today.getDate()).slice(-2);
+
+  function setupPeer(id){
+    peer=new Peer(id,{debug:0});
+    peer.on('open',pid=>{
+      setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
+      const base=window.location.href.split('?')[0];
+      const url=base+'?p=1&h='+encodeURIComponent(pid);
+      buildQR(url);
+    });
+    peer.on('connection',conn=>{
+      conn.on('open',()=>{
+        clients[conn.peer]=conn;
+        setStatus('<span class="dot"></span> '+Object.keys(clients).length+' device(s) connected','#00ff88');
+      });
+      conn.on('data',data=>{
+        if(data.type==='update'){
+          participants[data.payload.id]=data.payload;
+          renderLBData(participants);
+        }
+      });
+      conn.on('close',()=>delete clients[conn.peer]);
+    });
+    peer.on('error',e=>{
+      if(e.type==='unavailable-id'){peer.destroy();setupPeer(null);}
+      else setStatus('⚠️ '+e.message,'#ff6b6b');
+    });
   }
-}
-
-function saveUrl(){
-  const val=document.getElementById('url-input').value.trim();
-  if(!val.startsWith('http')){showErr('url-err','Must be a valid URL starting with https://');return;}
-  savedUrl=val.replace(/\/$/, '')+'?participant=1';
-  try{localStorage.setItem(URL_STORAGE_KEY,savedUrl);}catch(e){}
-  document.getElementById('url-modal').classList.add('hidden');
-  show('pg-host');
-  buildQR(savedUrl);
-  startHostPolling();
-}
-
-function skipUrl(){
-  savedUrl='';
-  document.getElementById('url-modal').classList.add('hidden');
-  show('pg-host');
-  document.getElementById('qr-wrap').innerHTML='<div style="padding:20px;opacity:.4;font-size:13px;text-align:center;line-height:1.8;">No URL set.<br>Participants on this device can use<br><b>Participant</b> mode directly.<br><br><button onclick="changeUrl()" style="padding:8px 16px;border:none;border-radius:8px;background:#c8102e;color:#fff;font-family:inherit;cursor:pointer;font-weight:600;">Set URL for QR</button></div>';
-  document.getElementById('qr-url-display').textContent='';
-  startHostPolling();
-}
-
-function changeUrl(){
-  document.getElementById('url-input').value=savedUrl||'';
-  document.getElementById('url-modal').classList.remove('hidden');
+  setupPeer(fixedId);
 }
 
 function buildQR(url){
@@ -586,38 +283,22 @@ function buildQR(url){
   wrap.innerHTML='';
   document.getElementById('qr-url-display').textContent=url;
   try{
-    const c=document.createElement('div');
-    c.className='qr-container';
-    wrap.appendChild(c);
-    new QRCode(c,{text:url,width:210,height:210,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+    const c=document.createElement('div');c.className='qr-container';wrap.appendChild(c);
+    new QRCode(c,{text:url,width:220,height:220,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
   }catch(e){
-    wrap.innerHTML=`<div style="padding:16px;background:#0d0d20;border-radius:12px;font-size:12px;word-break:break-all;line-height:1.7;max-width:240px;">${url}</div>`;
+    wrap.innerHTML=`<div style="padding:16px;font-size:11px;word-break:break-all;opacity:.7;line-height:1.8;">${url}</div>`;
   }
 }
 
-function startHostPolling(){
-  clearInterval(pollInt);
-  pollInt=setInterval(refreshLB,POLL_MS);
-  refreshLB();
-}
-
-// ── Leaderboard ────────────────────────────────────────────────────────────
-async function refreshLB(){
-  const data=await getSession();
-  renderLBData(data.participants||{});
-}
-
-function renderLBData(participants){
-  const parts=Object.values(participants);
-  const done=parts.filter(p=>p.done);
-  const inProg=parts.filter(p=>!p.done);
+function renderLBData(p){
+  const parts=Object.values(p||{});
+  const done=parts.filter(x=>x.done);
   document.getElementById('h-done').textContent=done.length;
-  document.getElementById('h-prog').textContent=inProg.length;
+  document.getElementById('h-prog').textContent=parts.filter(x=>!x.done).length;
   if(done.length){
-    const avg=Math.round(done.reduce((s,p)=>s+p.score,0)/done.length);
-    document.getElementById('h-avg').textContent=avg;
+    document.getElementById('h-avg').textContent=Math.round(done.reduce((s,x)=>s+x.score,0)/done.length);
     document.getElementById('h-qstats').innerHTML=QS.map((_,i)=>{
-      const c=done.filter(p=>Number(p.answers[i])===QS[i].ans).length;
+      const c=done.filter(x=>x.answers&&Number(x.answers[i])===QS[i].ans).length;
       const pct=Math.round(c/done.length*100);
       const col=pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
       return `<div style="background:#0d0d20;border-radius:6px;padding:5px 8px;font-size:11px;color:${col};font-weight:700;">Q${i+1} ${pct}%</div>`;
@@ -626,45 +307,35 @@ function renderLBData(participants){
     document.getElementById('h-avg').textContent='—';
     document.getElementById('h-qstats').innerHTML='';
   }
-
-  const allActive=[...parts].sort((a,b)=>{
-    if(a.done!==b.done) return a.done?-1:1;
-    return b.score-a.score;
-  });
-
-  document.getElementById('lb-count').textContent=allActive.length?allActive.length+' participant'+(allActive.length>1?'s':''):'';
+  const all=[...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
+  document.getElementById('lb-count').textContent=all.length?all.length+' team'+(all.length>1?'s':''):'';
   const list=document.getElementById('lb-list');
-  if(!allActive.length){
-    list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for participants…<br>参加者を待っています</div>';
-    return;
-  }
-  const doneRanked=[...done].sort((a,b)=>b.score-a.score);
-  list.innerHTML=allActive.map(p=>{
-    const ri=doneRanked.findIndex(d=>d.id===p.id);
-    const rankLabel=p.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
-    const cls=p.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
-    const correct=QS.filter((_,qi)=>Number(p.answers[qi])===QS[qi].ans).length;
-    const progress=p.done?QS.length:(p.qProgress||0);
-    const pct=Math.round(progress/QS.length*100);
+  if(!all.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';return;}
+  const dr=[...done].sort((a,b)=>b.score-a.score);
+  list.innerHTML=all.map(x=>{
+    const ri=dr.findIndex(d=>d.id===x.id);
+    const rl=x.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
+    const cls=x.done?(ri===0?'r1':ri===1?'r2':ri===2?'r3':''):'';
+    const correct=QS.filter((_,qi)=>x.answers&&Number(x.answers[qi])===QS[qi].ans).length;
+    const prog=x.done?QS.length:(x.qProgress||0);
+    const pct=Math.round(prog/QS.length*100);
     return `<div class="lb-row ${cls}">
-      <div class="lb-rank">${rankLabel}</div>
-      <div class="lb-emoji">${p.emoji||'🔵'}</div>
+      <div class="lb-rank">${rl}</div>
+      <div class="lb-emoji">${x.emoji||'🔵'}</div>
       <div style="flex:1;">
-        <div class="lb-name">${p.name}</div>
-        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${p.done?correct+'/'+QS.length+' correct':'Q'+(progress+1)+'/'+QS.length+' in progress'}</div>
-        ${!p.done?`<div style="display:flex;align-items:center;gap:6px;margin-top:5px;"><div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div><span style="font-size:11px;opacity:.4;">${pct}%</span></div>`:''}
+        <div class="lb-name">${x.name}</div>
+        <div style="font-size:11px;color:#ffd700;margin-top:2px;">${x.done?correct+'/'+QS.length+' correct':'Q'+(prog+1)+'/'+QS.length+' in progress'}</div>
+        ${!x.done?`<div style="display:flex;align-items:center;gap:6px;margin-top:5px;"><div class="prog-bg"><div class="prog-fill" style="width:${pct}%"></div></div><span style="font-size:11px;opacity:.4;">${pct}%</span></div>`:''}
       </div>
-      <div style="text-align:right;"><div class="lb-score">${p.score}</div><div style="font-size:12px;opacity:.5;">pts</div></div>
+      <div style="text-align:right;"><div class="lb-score">${x.score}</div><div style="font-size:12px;opacity:.5;">pts</div></div>
     </div>`;
   }).join('');
 }
 
-async function hostReset(){
-  if(!confirm('Reset all participant data?\n全データをリセットしますか？')) return;
-  await setSession({participants:{}});
-  renderLBData({});
-  document.getElementById('h-done').textContent='0';
-  document.getElementById('h-prog').textContent='0';
+function hostReset(){
+  if(!confirm('Reset all team data?\n全データをリセットしますか？'))return;
+  participants={};renderLBData({});
+  ['h-done','h-prog'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('h-avg').textContent='—';
   document.getElementById('h-qstats').innerHTML='';
 }
@@ -672,36 +343,51 @@ async function hostReset(){
 // ── PARTICIPANT ────────────────────────────────────────────────────────────
 function goParticipant(){
   document.getElementById('hdr-r').textContent='📱 Participant';
-  const grid=document.getElementById('group-grid');
-  grid.innerHTML='';
-  for(let i=1;i<=20;i++){
-    const b=document.createElement('button');
-    b.className='grp-btn';b.textContent='Group '+i;b.dataset.g=i;
-    b.onclick=()=>{
-      document.querySelectorAll('.grp-btn').forEach(x=>x.classList.remove('sel'));
-      b.classList.add('sel');myGroup='Group '+i;
-      showErr('join-err','');
-    };
-    grid.appendChild(b);
-  }
+  const params=new URLSearchParams(window.location.search);
+  const hid=params.get('h');
   show('pg-join');
+  const cs=document.getElementById('conn-status');
+
+  if(!hid){
+    cs.textContent='⚠️ No host ID in URL — scan the QR code from the host screen';
+    cs.style.opacity='1'; cs.style.color='#ff6b6b';
+    return;
+  }
+
+  cs.textContent='Connecting to host…';
+  peer=new Peer(null,{debug:0});
+  peer.on('open',()=>{
+    hostConn=peer.connect(hid,{reliable:true});
+    hostConn.on('open',()=>{
+      cs.textContent='✅ Connected to host';
+      cs.style.color='#00ff88'; cs.style.opacity='1';
+    });
+    hostConn.on('error',e=>{cs.textContent='Connection error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
+  });
+  peer.on('error',e=>{cs.textContent='Error: '+e.message;cs.style.color='#ff6b6b';cs.style.opacity='1';});
 }
 
-async function startQuiz(){
+function sendToHost(payload){
+  if(hostConn&&hostConn.open) hostConn.send({type:'update',payload});
+}
+
+function startQuiz(){
   showErr('join-err','');
-  if(!myGroup){showErr('join-err','Please select your group number / グループ番号を選んでください');return;}
-  const btn=document.getElementById('start-btn');
-  btn.disabled=true;btn.innerHTML='<span class="spin"></span>Starting…';
+  const val=parseInt(document.getElementById('p-group-input').value,10);
+  if(!val||val<1||val>150){showErr('join-err','Please enter a group number between 1 and 150.\nグループ番号は1〜150の数字を入力してください。');return;}
+  if(!hostConn||!hostConn.open){showErr('join-err','Not connected to host yet. Please wait a moment and try again, or re-scan the QR code.');return;}
+  myGroup='Group '+val;
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
   qIdx=0;myAnswers=[];
-  const data=await getSession();
-  if(!data.participants) data.participants={};
-  data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}};
-  await setSession(data);
-  btn.disabled=false;btn.innerHTML='🚀 Start Quiz / クイズを始める';
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}});
   show('pg-question');renderQ();
 }
+
+// Allow Enter key to start quiz
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('p-group-input').addEventListener('keydown',e=>{if(e.key==='Enter')startQuiz();});
+});
 
 function renderQ(){
   const q=QS[qIdx];
@@ -720,25 +406,17 @@ function renderQ(){
   });
 }
 
-async function pickAns(ai){
+function pickAns(ai){
   document.querySelectorAll('.opt').forEach(b=>{b.onclick=null;b.style.cursor='default';});
-  const q=QS[qIdx];const correct=ai===q.ans;
+  const q=QS[qIdx];
   document.querySelectorAll('.opt').forEach((b,i)=>{
-    if(i===q.ans) b.classList.add('correct');
-    else if(i===ai&&!correct) b.classList.add('wrong');
+    if(i===q.ans)b.classList.add('correct');
+    else if(i===ai&&ai!==q.ans)b.classList.add('wrong');
   });
   myAnswers[qIdx]=ai;
-  // Push to shared storage instantly
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  const data=await getSession();
-  if(data.participants&&data.participants[myId]){
-    data.participants[myId].score=score;
-    data.participants[myId].qProgress=qIdx+1;
-    data.participants[myId].answers=answersObj;
-  }
-  await setSession(data);
-
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score,done:false,qProgress:qIdx+1,answers:answersObj});
   document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.opts[q.ans];
   document.getElementById('q-exp-en').textContent=q.exen;
   document.getElementById('q-exp-jp').textContent=q.exjp;
@@ -750,28 +428,24 @@ async function pickAns(ai){
 
 function nextQ(){qIdx++;if(qIdx>=QS.length){finish();return;}renderQ();}
 
-async function finish(){
+function finish(){
   const score=myAnswers.reduce((s,a,i)=>s+(a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  const data=await getSession();
-  if(!data.participants) data.participants={};
-  data.participants[myId]={id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj};
-  await setSession(data);
-  const done=Object.values(data.participants).filter(p=>p.done).sort((a,b)=>b.score-a.score);
-  const rank=done.findIndex(p=>p.id===myId)+1;
-  document.getElementById('f-icon').textContent=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'#'+rank;
+  sendToHost({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
+  const correct=myAnswers.filter((a,i)=>a===QS[i].ans).length;
+  document.getElementById('f-icon').textContent=score>=130?'🥇':score>=100?'🎯':score>=70?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
   document.getElementById('f-score').textContent=score+' pts';
-  document.getElementById('f-rank').textContent='Rank '+rank+' of '+done.length+' completed';
+  document.getElementById('f-rank').textContent=correct+' / '+QS.length+' correct answers';
   document.getElementById('f-breakdown').innerHTML=QS.map((q,i)=>{
     const ok=myAnswers[i]===q.ans;
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">
       <span>${ok?'✅':'❌'}</span><span style="flex:1;opacity:.6;">${q.cat}</span>
       <span style="font-weight:700;color:${ok?'#00ff88':'#ff6b6b'}">${ok?'+10':'0'}</span></div>`;
   }).join('');
-  document.getElementById('hdr-r').textContent=myEmoji+' '+myGroup+' — '+score+' pts';
+  document.getElementById('hdr-r').textContent=myEmoji+' '+myGroup+' — '+score+'pts';
   show('pg-final');
-  if(score>=120) launchConfetti();
+  if(score>=120)launchConfetti();
 }
 
 function launchConfetti(){
@@ -785,18 +459,8 @@ function launchConfetti(){
   }
 }
 
-// ── Download ───────────────────────────────────────────────────────────────
-function dlFile(){
-  const html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  const blob=new Blob([html],{type:'text/html'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='elj2030-quiz.html';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
-}
-
-// ── Auto-route ─────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
-  if(new URLSearchParams(window.location.search).get('participant')==='1') goParticipant();
+  if(new URLSearchParams(window.location.search).get('p')==='1') goParticipant();
 });
 </script>
-
 </body></html>
