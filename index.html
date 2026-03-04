@@ -154,6 +154,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
     <div style="font-size:12px;opacity:.5;" id="q-prog"></div>
   </div>
   <div class="pbar-wrap"><div class="pbar" id="q-pbar" style="width:0%"></div></div>
+  <!-- q-en class kept for Japanese (large white), q-jp class kept for English (small gray) -->
   <div class="q-en" id="q-en"></div>
   <div class="q-jp" id="q-jp"></div>
   <div id="q-opts"></div>
@@ -184,13 +185,10 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 </div>
 
 <script>
-// ── Ably API key (free tier — 6M messages/month, no account needed for this key) ──
-// This is a free publishable key for ELJ2030 event use
 const ABLY_KEY = '3r-VzQ.MfHuOg:mFrX-nNP9O2_ZLsxXRz1I0QJg8Rj6t2aahS2EJ_4W6I';
 const CHANNEL  = 'elj2030-quiz-v1';
 
 const QS=[
-  // Q1 ans=B(1), Q2 ans=C(2), Q3 ans=B(1), Q4 ans=A(0), Q5 ans=D(3), Q6 ans=B(1), Q7 ans=C(2), Q8 ans=B(1), Q9 ans=A(0), Q10 ans=D(3), Q11 ans=B(1), Q12 ans=C(2), Q13 ans=B(1), Q14 ans=A(0), Q15 ans=C(2)
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"What does a customer-centric approach in ELJ2030 primarily focus on?",jp:"ELJ2030における顧客中心のアプローチが主に焦点を当てるのは？",opts:["Reducing costs","Understanding and anticipating patient/customer needs","Increasing sales targets","Streamlining internal processes"],ojp:["コスト削減","患者・顧客のニーズを理解し先取りすること","販売目標の引き上げ","社内プロセスの効率化"],ans:1,exen:"ELJ2030 centers on deeply understanding patient and customer needs, placing them at the heart of every decision.",exjp:"ELJ2030は患者・顧客のニーズを深く理解し、意思決定の中心に置くことを重視します。"},
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"Which behavior best demonstrates Customer Excellence at ELJ?",jp:"ELJにおいて顧客エクセレンスを最もよく示す行動はどれ？",opts:["Following standard scripts","Minimising time with customers","Co-creating solutions with healthcare professionals","Focusing only on promoted products"],ojp:["標準スクリプトを使用する","顧客との接触時間を最小化する","医療従事者と共にソリューションを共創する","推奨製品のみに集中する"],ans:2,exen:"Customer Excellence means co-creating value with healthcare professionals beyond transactions.",exjp:"顧客エクセレンスとは医療従事者と共に価値を共創することです。"},
   {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"In ELJ2030, customer excellence includes which of the following?",jp:"ELJ2030において顧客エクセレンスに含まれるのは？",opts:["One-size-fits-all messaging","Personalised, insight-driven engagement","Reducing field force size","Focusing on tier-1 hospitals only"],ojp:["画一的なメッセージング","個別化されたインサイト主導のエンゲージメント","MRの人数削減","一次病院のみへの集中"],ans:1,exen:"Personalised, insight-driven engagement makes every interaction relevant and impactful.",exjp:"個別化されたエンゲージメントにより各顧客との接点が効果的になります。"},
@@ -217,7 +215,6 @@ function showErr(id,msg){const e=document.getElementById(id);e.textContent=msg;m
 function setStatus(html,color){document.getElementById('h-status-txt').innerHTML=html;document.getElementById('h-status').style.borderLeftColor=color||'#ffd700';}
 function setPill(html,color){const p=document.getElementById('conn-pill');if(p){p.innerHTML=html;p.style.color=color||'#ffd700';}}
 
-// ── Connect to Ably ────────────────────────────────────────────────────────
 function connectAbly(onReady){
   try{
     ablyClient=new Ably.Realtime({key:ABLY_KEY,clientId:'elj-'+Date.now()});
@@ -229,22 +226,16 @@ function connectAbly(onReady){
   }catch(e){ if(onReady) onReady(e); }
 }
 
-// ── HOST ──────────────────────────────────────────────────────────────────
 function goHost(){
   document.getElementById('hdr-r').textContent='🖥️ Host';
   show('pg-host');
   setStatus('<span class="spin"></span> Connecting…','#ffd700');
-
   connectAbly(err=>{
     if(err){setStatus('❌ Connection failed: '+err,'#ff6b6b');return;}
     setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
-
-    // QR is always the same fixed URL
     const base=window.location.href.split('?')[0];
     const url=base+'?p=1';
     buildQR(url);
-
-    // Subscribe to participant updates
     channel.subscribe('participant-update', msg=>{
       participants[msg.data.id]=msg.data;
       renderLBData(participants);
@@ -314,14 +305,12 @@ function hostReset(){
   document.getElementById('lb-list').innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';
 }
 
-// ── PARTICIPANT ───────────────────────────────────────────────────────────
 function goParticipant(){
   document.getElementById('hdr-r').textContent='📱 Participant';
   show('pg-join');
   setPill('<span class="spin"></span> Connecting…','#ffd700');
   document.getElementById('start-btn').disabled=true;
   document.getElementById('start-btn').innerHTML='<span class="spin"></span> Connecting…';
-
   connectAbly(err=>{
     if(err){
       setPill('❌ No connection','#ff6b6b');
@@ -362,14 +351,16 @@ function renderQ(){
   document.getElementById('q-cat').textContent=q.cat+' / '+q.cjp;
   document.getElementById('q-prog').textContent=(qIdx+1)+' / '+QS.length;
   document.getElementById('q-pbar').style.width=(qIdx/QS.length*100)+'%';
-  document.getElementById('q-en').textContent=q.en;
-  document.getElementById('q-jp').textContent=q.jp;
+  // SWAPPED: Japanese in q-en (large white), English in q-jp (small gray)
+  document.getElementById('q-en').textContent=q.jp;
+  document.getElementById('q-jp').textContent=q.en;
   document.getElementById('q-exp').classList.add('hidden');
   document.getElementById('q-next').classList.add('hidden');
   const c=document.getElementById('q-opts');c.innerHTML='';
   q.opts.forEach((o,i)=>{
     const b=document.createElement('button');b.className='opt';
-    b.innerHTML=`<span class="opt-l">${String.fromCharCode(65+i)}.</span>${o}<div class="opt-jp">${q.ojp[i]}</div>`;
+    // SWAPPED: Japanese (ojp) as main option text, English (opts) as sub-text
+    b.innerHTML=`<span class="opt-l">${String.fromCharCode(65+i)}.</span>${q.ojp[i]}<div class="opt-jp">${o}</div>`;
     b.onclick=()=>pickAns(i);c.appendChild(b);
   });
 }
@@ -385,9 +376,10 @@ function pickAns(ai){
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   publish({id:myId,name:myGroup,emoji:myEmoji,score,done:false,qProgress:qIdx+1,answers:answersObj});
-  document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.opts[q.ans];
-  document.getElementById('q-exp-en').textContent=q.exen;
-  document.getElementById('q-exp-jp').textContent=q.exjp;
+  document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.ojp[q.ans];
+  // SWAPPED: Japanese explanation first, English second
+  document.getElementById('q-exp-en').textContent=q.exjp;
+  document.getElementById('q-exp-jp').textContent=q.exen;
   document.getElementById('q-exp').classList.remove('hidden');
   const nb=document.getElementById('q-next');
   nb.textContent=qIdx<QS.length-1?'Next Question ⏭':'See My Results 🏆';
