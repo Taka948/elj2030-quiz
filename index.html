@@ -135,7 +135,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 <div class="pg" id="pg-join">
   <div style="text-align:center;padding-top:16px;margin-bottom:8px;">
     <div style="font-size:26px;font-weight:900;">ELJ2030 Quiz</div>
-    <div style="font-size:13px;opacity:.45;margin-top:6px;">Japan Leadership Conference · 15 questions</div>
+    <div style="font-size:13px;opacity:.45;margin-top:6px;">Japan Leadership Conference · 10 questions</div>
   </div>
   <div id="conn-pill" class="conn-pill" style="color:#ffd700;"><span class="spin"></span> Connecting…</div>
   <div class="group-input-wrap">
@@ -154,7 +154,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
     <div style="font-size:12px;opacity:.5;" id="q-prog"></div>
   </div>
   <div class="pbar-wrap"><div class="pbar" id="q-pbar" style="width:0%"></div></div>
-  <!-- q-en class kept for Japanese (large white), q-jp class kept for English (small gray) -->
+  <!-- q-en = large white (used for JP), q-jp = small gray (used for EN) -->
   <div class="q-en" id="q-en"></div>
   <div class="q-jp" id="q-jp"></div>
   <div id="q-opts"></div>
@@ -189,21 +189,116 @@ const ABLY_KEY = '3r-VzQ.MfHuOg:mFrX-nNP9O2_ZLsxXRz1I0QJg8Rj6t2aahS2EJ_4W6I';
 const CHANNEL  = 'elj2030-quiz-v1';
 
 const QS=[
-  {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"What does a customer-centric approach in ELJ2030 primarily focus on?",jp:"ELJ2030における顧客中心のアプローチが主に焦点を当てるのは？",opts:["Reducing costs","Understanding and anticipating patient/customer needs","Increasing sales targets","Streamlining internal processes"],ojp:["コスト削減","患者・顧客のニーズを理解し先取りすること","販売目標の引き上げ","社内プロセスの効率化"],ans:1,exen:"ELJ2030 centers on deeply understanding patient and customer needs, placing them at the heart of every decision.",exjp:"ELJ2030は患者・顧客のニーズを深く理解し、意思決定の中心に置くことを重視します。"},
-  {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"Which behavior best demonstrates Customer Excellence at ELJ?",jp:"ELJにおいて顧客エクセレンスを最もよく示す行動はどれ？",opts:["Following standard scripts","Minimising time with customers","Co-creating solutions with healthcare professionals","Focusing only on promoted products"],ojp:["標準スクリプトを使用する","顧客との接触時間を最小化する","医療従事者と共にソリューションを共創する","推奨製品のみに集中する"],ans:2,exen:"Customer Excellence means co-creating value with healthcare professionals beyond transactions.",exjp:"顧客エクセレンスとは医療従事者と共に価値を共創することです。"},
-  {cat:"Customer Excellence",cjp:"顧客エクセレンス",en:"In ELJ2030, customer excellence includes which of the following?",jp:"ELJ2030において顧客エクセレンスに含まれるのは？",opts:["One-size-fits-all messaging","Personalised, insight-driven engagement","Reducing field force size","Focusing on tier-1 hospitals only"],ojp:["画一的なメッセージング","個別化されたインサイト主導のエンゲージメント","MRの人数削減","一次病院のみへの集中"],ans:1,exen:"Personalised, insight-driven engagement makes every interaction relevant and impactful.",exjp:"個別化されたエンゲージメントにより各顧客との接点が効果的になります。"},
-  {cat:"Digital & Data",cjp:"デジタル＆データ",en:"How does ELJ2030 leverage digital and data capabilities?",jp:"ELJ2030はデジタル・データをどのように活用するか？",opts:["To generate insights that improve decisions","To replace human judgment entirely","Only for back-office automation","To reduce headcount"],ojp:["意思決定を向上させる洞察を生み出すため","人間の判断を完全に置き換えるため","バックオフィスの自動化のみ","人員削減のため"],ans:0,exen:"Digital and data tools generate actionable insights that enhance human judgment in the field.",exjp:"デジタル・データツールは現場の人間の判断を強化する洞察を提供します。"},
-  {cat:"Digital & Data",cjp:"デジタル＆データ",en:"What is a key outcome of building strong data literacy in ELJ?",jp:"ELJでデータリテラシーを高める重要な成果は？",opts:["Eliminating sales calls","Automating all interactions","Reducing training budgets","Empowering evidence-based decisions"],ojp:["営業訪問をなくすこと","すべての対応を自動化すること","トレーニング予算の削減","エビデンスに基づく意思決定を支援すること"],ans:3,exen:"Data literacy empowers every employee to interpret data confidently for better decisions.",exjp:"データリテラシーにより従業員がデータを自信を持って解釈できます。"},
-  {cat:"Digital & Data",cjp:"デジタル＆データ",en:"Which best describes the role of AI in ELJ2030?",jp:"ELJ2030におけるAIの役割を最もよく表すのは？",opts:["Fully autonomous decisions","An enabler of smarter, human-led strategies","A replacement for field teams","Only used in R&D"],ojp:["完全自律型の意思決定","より賢い人間主導の戦略を可能にするもの","現場チームの代替","R&Dのみで使用"],ans:1,exen:"AI in ELJ2030 augments human capabilities while keeping people in the lead.",exjp:"ELJ2030のAIは人間の能力を拡張します。"},
-  {cat:"Innovation Agility",cjp:"イノベーション・アジリティ",en:"What does Innovation Agility mean in the ELJ2030 context?",jp:"ELJ2030のイノベーション・アジリティとは？",opts:["Avoiding change","Delegating innovation to HQ","Rapidly testing, learning, and adapting","Only innovating in product development"],ojp:["変化を避けること","イノベーションを本社に委任すること","新しいアイデアを迅速にテスト・学習・適応すること","製品開発のみでイノベーション"],ans:2,exen:"Innovation Agility means rapid experimentation — test, learn, fail fast, and scale what works.",exjp:"イノベーション・アジリティとは迅速な実験です。"},
-  {cat:"Innovation Agility",cjp:"イノベーション・アジリティ",en:"Which mindset best supports Innovation Agility?",jp:"イノベーション・アジリティを最もよく支えるマインドセットは？",opts:["Strict hierarchy for decision-making","Psychological safety to experiment and learn","Annual planning cycles only","'If it ain't broke, don't fix it'"],ojp:["意思決定のための厳格な階層","実験し失敗から学ぶ心理的安全性","年次計画サイクルのみ","「壊れていないなら直すな」"],ans:1,exen:"Psychological safety enables bold experimentation and learning from setbacks.",exjp:"心理的安全性により大胆な実験と失敗からの学びが可能です。"},
-  {cat:"Innovation Agility",cjp:"イノベーション・アジリティ",en:"How should teams approach new market opportunities in ELJ2030?",jp:"ELJ2030において新市場機会へのアプローチは？",opts:["Pilot locally, learn quickly, scale successes","Wait for proven global models","Focus only on existing products","Seek approval for every small action"],ojp:["ローカルでパイロット、迅速に学習、成功をスケール","実証済みのグローバルモデルを待つ","既存製品のみに集中","小さなアクションごとに承認を求める"],ans:0,exen:"Pilot-learn-scale: start small, gather insights fast, and scale what delivers results.",exjp:"「パイロット・学習・スケール」アプローチを実践します。"},
-  {cat:"People & Culture",cjp:"ピープル＆カルチャー",en:"What is a core element of the People & Culture capability in ELJ2030?",jp:"ELJ2030のピープル＆カルチャーの中核要素は？",opts:["Maximising individual performance only","Minimising training investment","Standardising all roles globally","Building an inclusive, growth-oriented culture"],ojp:["個人パフォーマンスの最大化のみ","トレーニング投資の最小化","すべての役割をグローバルに標準化","包括的で成長志向の文化を構築すること"],ans:3,exen:"People & Culture emphasises an inclusive environment where everyone can grow and thrive.",exjp:"誰もが成長できる包括的な環境の構築を重視します。"},
-  {cat:"People & Culture",cjp:"ピープル＆カルチャー",en:"How does ELJ2030 support employee development?",jp:"ELJ2030はどのように従業員の成長を支援するか？",opts:["One-time onboarding training only","Continuous learning, coaching and career growth","Focusing only on top performers","External hiring over internal development"],ojp:["入社時研修のみ","継続的な学習、コーチング、キャリア成長機会","ハイパフォーマーのみへの集中","内部育成より外部採用"],ans:1,exen:"ELJ2030 invests in continuous development — coaching, pathways, and opportunities for every employee.",exjp:"ELJ2030はすべての従業員の継続的な成長に投資します。"},
-  {cat:"People & Culture",cjp:"ピープル＆カルチャー",en:"Diversity and inclusion in ELJ2030 is seen as:",jp:"ELJ2030におけるD&Iは何と見なされているか？",opts:["A compliance requirement","Nice-to-have, not essential","A strategic advantage that drives innovation","Primarily an HR concern"],ojp:["コンプライアンス要件","必須ではなくあれば良いもの","イノベーションを促進する戦略的優位性","主にHRの関心事"],ans:2,exen:"D&I is a strategic driver — diverse perspectives fuel innovation and create stronger teams.",exjp:"D&Iは戦略的推進力であり多様な視点がイノベーションを促します。"},
-  {cat:"Cross-functional Collaboration",cjp:"クロスファンクショナル協働",en:"Why is cross-functional collaboration critical for ELJ2030?",jp:"クロスファンクショナル協働がELJ2030にとって重要な理由は？",opts:["It reduces individual accountability","Complex challenges require diverse expertise","It is required by global HQ only","It allows teams to avoid decisions"],ojp:["個人の説明責任を軽減するから","複雑な課題には多様な専門知識の協働が必要だから","グローバル本社の要件だから","チームが意思決定を避けられるから"],ans:1,exen:"Complex challenges require diverse expertise working together to create breakthrough solutions.",exjp:"複雑な課題はクロスファンクショナル協働が解決します。"},
-  {cat:"Cross-functional Collaboration",cjp:"クロスファンクショナル協働",en:"What enables effective cross-functional collaboration at ELJ?",jp:"ELJで効果的なクロスファンクショナル協働を可能にするものは？",opts:["Shared goals, mutual respect, and open communication","Boundaries that limit sharing","Reporting to the same line manager","Working in the same physical location"],ojp:["共通の目標、相互尊重、オープンなコミュニケーション","情報共有を制限する明確な境界","同じ直属の上司への報告","同じ物理的場所での勤務"],ans:0,exen:"Shared goals, mutual respect, and open communication enable effective collaboration.",exjp:"共通の目標と相互尊重が協働を可能にします。"},
-  {cat:"Cross-functional Collaboration",cjp:"クロスファンクショナル協働",en:"In ELJ2030, breaking down silos primarily leads to:",jp:"ELJ2030においてサイロを解消することが主にもたらすものは？",opts:["Slower decision-making","Reduced individual ownership","Faster, innovative and customer-focused outcomes","More complex reporting structures"],ojp:["意思決定の遅延","個人のオーナーシップの低下","より迅速で革新的な顧客中心の成果","より複雑な報告体制"],ans:2,exen:"Breaking down silos enables faster decisions and more customer-focused solutions.",exjp:"サイロを解消することでより迅速な意思決定が実現します。"}
+  // Q1
+  {
+    cat:"📝 ポリシーメイキング", cjp:"Influencing Policymaking",
+    jp:"ポリシーメイキングケイパビリティにおいて、「できるだけ早い段階で見極める」べき2つはどれですか？",
+    en:"In the Influencing Policymaking capability, what two things must we identify 'as early as possible'?",
+    ojp:["規制当局の動向と業界団体の方針","リリーの目標にとってプラスとなる機会と、マイナスとなり得る脅威","競合他社の政策ポジションと市場シェアの変化","政府の予算配分と医療保険の改定スケジュール"],
+    opts:["Regulatory authority trends and industry association policies","Opportunities positive for Lilly's goals and threats that could be negative","Competitor policy positions and market share changes","Government budget allocations and healthcare insurance revision schedules"],
+    ans:1,
+    exjp:"動画では「リリーの目標にとってプラスとなる機会、マイナスとなり得る脅威をできるだけ早い段階で見極める」と明示されています。",
+    exen:"The video states we must identify 'opportunities positive for Lilly's goals and threats that could be negative, as early as possible.'"
+  },
+  // Q2
+  {
+    cat:"📝 ソーシャル認知・コンシューマー・アクティベーション", cjp:"Social Recognition & Consumer Activation",
+    jp:"動画では「単なる認知向上ではない」と明言しています。このケイパビリティが本当に目指すものは？",
+    en:"The video states this capability is 'not simply awareness improvement.' What does it truly aim to achieve?",
+    ojp:["デジタルメディアを活用して製品認知度を最大化すること","患者が自ら医師を訪問するよう行動変容を促す広告活動","リリーがローンチ以前から環境を形成し、認知から行動へ移行できるようエンドツーエンドで統合されたソリューションを通じて支援すること","医療従事者への情報提供を通じて処方行動を変えること"],
+    opts:["Maximizing product awareness using digital media","Advertising to prompt patients to visit doctors on their own","Supporting people through an end-to-end integrated solution — shaping the environment before launch so people can transition from awareness to action","Changing prescribing behavior through information provision to HCPs"],
+    ans:2,
+    exjp:"「ローンチ以前から環境を形成し、エンドツーエンドで統合されたソリューションを通じて支援すること」が核心です。",
+    exen:"The video says: 'Lilly shapes the environment before launch, supporting people through an end-to-end integrated solution so they can transition from awareness to action.'"
+  },
+  // Q3
+  {
+    cat:"📝 ローンチ & オペレーショナル・エクセレンス", cjp:"Launch & Operational Excellence",
+    jp:"ローンチ＆オペレーショナル・エクセレンスで「シームレスに行う」連携の起点として、動画が明示しているのはどこですか？",
+    en:"For Launch & Operational Excellence, what does the video identify as the starting point of the 'seamless' integration?",
+    ojp:["市場承認申請（申請準備）の段階","製品の上市6ヶ月前","臨床開発初期","ブランド戦略の策定時"],
+    opts:["The regulatory submission preparation stage","Six months before product launch","Early clinical development","Brand strategy formulation"],
+    ans:2,
+    exjp:"動画では「臨床開発初期からブランド戦略、ローンチ実行までをシームレスに行う」と明記されています。",
+    exen:"The video states: 'seamlessly conducting everything from early clinical development through brand strategy to launch execution.'"
+  },
+  // Q4
+  {
+    cat:"📝 人材・リーダーシップ", cjp:"People Strategy & Execution",
+    jp:"人材・リーダーシップケイパビリティについて、2026年の位置づけとして動画が使った表現はどれですか？",
+    en:"For the People Strategy & Execution capability, which phrase does the video use to describe the role of 2026?",
+    ojp:["「変革への助走期間」","「全社員が具体的なアクションを開始する初年度」","「リーダーシップ強化の集中投資年」","「ELJ2030ビジョンを社員に浸透させる啓発の年」"],
+    opts:["'A runway period for transformation'","'The first year in which all employees begin taking concrete action'","'A year of concentrated investment in leadership development'","'An awareness year for instilling the ELJ2030 vision across employees'"],
+    ans:1,
+    exjp:"「2026年は、全社員が具体的なアクションを開始する初年度です」が動画の表現です。「準備」や「浸透」ではなく、すでに「アクションを開始する」年です。",
+    exen:"The video states: '2026 is the first year in which all employees begin taking concrete action.' The emphasis is on already taking action — not preparation."
+  },
+  // Q5
+  {
+    cat:"🔗 ポリシーメイキング", cjp:"Influencing Policymaking — Combination",
+    jp:"ポリシーメイキングの2030年ビジョンと関与スタンスについて、正しい組み合わせはどれですか？\n①目指す姿は「業界をリードする立場として主体的に政策立案に関与している状態」\n②目指す姿は「規制当局との継続的な対話関係を構築している状態」\n③関与スタンスは「受け身ではなく、能動的に」\n④関与スタンスは「慎重に、業界コンセンサスを確認しながら」",
+    en:"Regarding the 2030 vision and engagement stance for Influencing Policymaking, which combination is correct?\n①2030 target: 'proactively engaged in policymaking as an industry-leading organization'\n②2030 target: 'maintaining a continuous dialogue with regulatory authorities'\n③Stance: 'proactive, not reactive'\n④Stance: 'cautious, confirming industry consensus before acting'",
+    ojp:["① と ③","① と ④","② と ③","② と ④"],
+    opts:["① and ③","① and ④","② and ③","② and ④"],
+    ans:0,
+    exjp:"動画では①「業界をリードする立場として主体的に政策立案に関与」と③「受け身ではなく」が明確に語られています。",
+    exen:"The video presents ① 'proactively engaged as an industry leader' as the 2030 goal, with ③ 'not reactive' as an explicit contrast."
+  },
+  // Q6
+  {
+    cat:"🔗 ソーシャル認知・コンシューマー・アクティベーション", cjp:"Social Recognition & Consumer Activation — Combination",
+    jp:"2030年のソーシャル認知ビジョンについて、動画に登場する正しい組み合わせはどれですか？\n①注力疾患領域に「前臨床期アルツハイマー病」が含まれる\n②注力疾患領域に「2型糖尿病」が含まれる\n③社会変化の目標のひとつに「スティグマの低減」がある\n④社会変化の目標のひとつに「医療費の患者負担削減」がある",
+    en:"Regarding the 2030 Social Recognition vision, which combination appears in the video?\n①Priority disease areas include 'preclinical Alzheimer's disease'\n②Priority disease areas include 'type 2 diabetes'\n③One target social change is 'reducing stigma around diseases'\n④One target social change is 'reducing patient out-of-pocket medical costs'",
+    ojp:["① と ③","① と ④","② と ③","② と ④"],
+    opts:["① and ③","① and ④","② and ③","② and ④"],
+    ans:0,
+    exjp:"動画では「前臨床期アルツハイマー病や肥満などの疾患が正しく理解され、スティグマが低減され」と語られています。2型糖尿病や医療費削減は登場しません。",
+    exen:"The video states: 'diseases such as preclinical Alzheimer's and obesity are correctly understood, stigma is reduced.' Type 2 diabetes and medical costs do not appear."
+  },
+  // Q7
+  {
+    cat:"🔗 コーポレートブランディング", cjp:"Corporate Branding — Combination",
+    jp:"コーポレートブランディングの担い手と社会的インパクト拡大の手段について、正しい組み合わせはどれですか？\n①担い手は「すべての社員がブランドアンバサダーとして行動する」\n②担い手は「コミュニケーション部門とマーケティング部門が中心」\n③インパクト拡大の手段に「外部パートナーシップ」が含まれる\n④インパクト拡大の手段は「製品広告と販促活動」に集約される",
+    en:"Regarding who leads Corporate Branding and how social impact is expanded, which combination is correct?\n①All employees act as brand ambassadors\n②The Communications and Marketing departments are the primary drivers\n③External partnerships are included as a means of expanding social impact\n④Social impact is driven solely through product advertising and promotional activities",
+    ojp:["① と ③","① と ④","② と ③","② と ④"],
+    opts:["① and ③","① and ④","② and ③","② and ④"],
+    ans:0,
+    exjp:"動画では「すべての社員がブランドアンバサダーとして行動し、外部パートナーシップを通じて社会的インパクトを拡大する」と明記されています。",
+    exen:"The video states: 'all employees act as brand ambassadors and expand social impact through external partnerships.'"
+  },
+  // Q8
+  {
+    cat:"🔗 人材・リーダーシップ", cjp:"People Strategy & Execution — Combination",
+    jp:"人材・リーダーシップの施策方向性と目指す文化について、正しい組み合わせはどれですか？\n①施策の方向性は「ELJ2030ビジョンと整合させ、組織全体の価値創出力を高める」\n②施策の方向性は「グローバルベストプラクティスを日本に適用する」\n③目指す文化は「社員一人ひとりがリーダーシップマインドセットを持ち、挑戦を通じて成果を生む」\n④目指す文化は「明確な役割分担のもと、各自が専門性を深める」",
+    en:"Regarding HR initiative direction and target culture in People Strategy & Execution, which combination is correct?\n①Direction: 'align all HR initiatives with ELJ2030 vision and elevate the value creation capacity of the entire organization'\n②Direction: 'apply global best practices to Japan'\n③Target culture: 'every employee has a leadership mindset and generates results through challenge'\n④Target culture: 'each person deepens their expertise within clearly defined roles'",
+    ojp:["① と ③","① と ④","② と ③","② と ④"],
+    opts:["① and ③","① and ④","② and ③","② and ④"],
+    ans:0,
+    exjp:"①「ELJ2030ビジョンと整合させ組織全体の価値創出力を高める」と③「挑戦を通じて成果を生む文化」が動画の核心です。",
+    exen:"① 'Align all HR initiatives with ELJ2030 vision' and ③ 'foster a culture where every employee generates results through challenge' are the two pillars."
+  },
+  // Q9
+  {
+    cat:"🎯 ソーシャル認知・コンシューマー・アクティベーション", cjp:"Social Recognition — Nuance (Video-Only)",
+    jp:"動画でソーシャル認知ケイパビリティを説明する際、語り手が意図的に否定した表現として正確なものはどれですか？",
+    en:"When introducing the Social Recognition capability, which negated expression appears in the video?",
+    ojp:["「製品のプロモーション活動」ではない","「単なる認知向上」ではない","「患者教育プログラム」ではない","「マーケティングキャンペーン」ではない"],
+    opts:["'It is not product promotion activities'","'It is not simply awareness improvement'","'It is not a patient education program'","'It is not a marketing campaign'"],
+    ans:1,
+    exjp:"動画は「社会的認知とコンシューマー・アクティベーションは、単なる認知向上ではありません」という一文から始まります。",
+    exen:"The video opens with: 'Social Recognition and Consumer Activation is not simply awareness improvement.' This deliberate negation sets up the true ambition."
+  },
+  // Q10
+  {
+    cat:"🎯 ローンチ & オペレーショナル・エクセレンス", cjp:"Launch & Operational Excellence — Nuance (Video-Only)",
+    jp:"ローンチ＆オペレーショナル・エクセレンスの2030年ビジョンを語る際、動画が短く断言した表現として最も正確なものはどれですか？",
+    en:"When describing the 2030 vision for Launch & Operational Excellence, which phrasing most accurately reflects the video's brief, definitive statement?",
+    ojp:["「2030年までに、これがリリー・ジャパンの強みとなることを目指します」","「2030年までに、これはリリー・ジャパンの競争優位性となります」","「2030年には、このアプローチがグローバルのベンチマークとなるでしょう」","「2030年に向けて、ローンチの卓越性を組織能力として定着させます」"],
+    opts:["'By 2030, we aim for this to become Lilly Japan's strength'","'By 2030, this will be Lilly Japan's competitive advantage'","'By 2030, this approach will become the global benchmark'","'Toward 2030, we will embed launch excellence as an organizational capability'"],
+    ans:1,
+    exjp:"「2030年までに、これはリリー・ジャパンの競争優位性となります」と断言されています。「目指します」「でしょう」といった曖昧さはなく、確信を持って「なります」と言い切っています。",
+    exen:"The video states: 'By 2030, this will be Lilly Japan's competitive advantage' — a short declarative with no hedging. 'Will be' not 'aim for' signals strong conviction."
+  }
 ];
 
 const EMOJIS=['🔵','🔴','🟡','🟢','🟠','🟣','💎','⭐','🌟','🚀','🦁','🐯','🦊','🦅','🏆','⚡','🔥','🎯','🌊','🎪'];
@@ -218,12 +313,9 @@ function setPill(html,color){const p=document.getElementById('conn-pill');if(p){
 function connectAbly(onReady){
   try{
     ablyClient=new Ably.Realtime({key:ABLY_KEY,clientId:'elj-'+Date.now()});
-    ablyClient.connection.on('connected',()=>{
-      channel=ablyClient.channels.get(CHANNEL);
-      onReady();
-    });
-    ablyClient.connection.on('failed',e=>{ if(onReady) onReady(e); });
-  }catch(e){ if(onReady) onReady(e); }
+    ablyClient.connection.on('connected',()=>{channel=ablyClient.channels.get(CHANNEL);onReady();});
+    ablyClient.connection.on('failed',e=>{if(onReady)onReady(e);});
+  }catch(e){if(onReady)onReady(e);}
 }
 
 function goHost(){
@@ -234,12 +326,8 @@ function goHost(){
     if(err){setStatus('❌ Connection failed: '+err,'#ff6b6b');return;}
     setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
     const base=window.location.href.split('?')[0];
-    const url=base+'?p=1';
-    buildQR(url);
-    channel.subscribe('participant-update', msg=>{
-      participants[msg.data.id]=msg.data;
-      renderLBData(participants);
-    });
+    buildQR(base+'?p=1');
+    channel.subscribe('participant-update',msg=>{participants[msg.data.id]=msg.data;renderLBData(participants);});
   });
 }
 
@@ -268,7 +356,7 @@ function renderLBData(p){
       const col=pct>=70?'#00ff88':pct>=40?'#ffd700':'#ff3355';
       return `<div style="background:#0d0d20;border-radius:6px;padding:5px 8px;font-size:11px;color:${col};font-weight:700;">Q${i+1} ${pct}%</div>`;
     }).join('');
-  } else {
+  }else{
     document.getElementById('h-avg').textContent='—';
     document.getElementById('h-qstats').innerHTML='';
   }
@@ -325,9 +413,7 @@ function goParticipant(){
   });
 }
 
-function publish(data){
-  if(channel) channel.publish('participant-update', data);
-}
+function publish(data){if(channel)channel.publish('participant-update',data);}
 
 function startQuiz(){
   showErr('join-err','');
@@ -351,16 +437,16 @@ function renderQ(){
   document.getElementById('q-cat').textContent=q.cat+' / '+q.cjp;
   document.getElementById('q-prog').textContent=(qIdx+1)+' / '+QS.length;
   document.getElementById('q-pbar').style.width=(qIdx/QS.length*100)+'%';
-  // SWAPPED: Japanese in q-en (large white), English in q-jp (small gray)
+  // Japanese = large white (q-en slot), English = small gray (q-jp slot)
   document.getElementById('q-en').textContent=q.jp;
   document.getElementById('q-jp').textContent=q.en;
   document.getElementById('q-exp').classList.add('hidden');
   document.getElementById('q-next').classList.add('hidden');
   const c=document.getElementById('q-opts');c.innerHTML='';
-  q.opts.forEach((o,i)=>{
+  q.ojp.forEach((o,i)=>{
     const b=document.createElement('button');b.className='opt';
-    // SWAPPED: Japanese (ojp) as main option text, English (opts) as sub-text
-    b.innerHTML=`<span class="opt-l">${String.fromCharCode(65+i)}.</span>${q.ojp[i]}<div class="opt-jp">${o}</div>`;
+    // Japanese as main option text, English as sub-text
+    b.innerHTML=`<span class="opt-l">${String.fromCharCode(65+i)}.</span>${o}<div class="opt-jp">${q.opts[i]}</div>`;
     b.onclick=()=>pickAns(i);c.appendChild(b);
   });
 }
@@ -376,8 +462,9 @@ function pickAns(ai){
   const score=myAnswers.reduce((s,a,i)=>s+(a!==undefined&&a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   publish({id:myId,name:myGroup,emoji:myEmoji,score,done:false,qProgress:qIdx+1,answers:answersObj});
+  // Correct answer label in Japanese
   document.getElementById('q-exp-ans').textContent='✅ '+String.fromCharCode(65+q.ans)+'. '+q.ojp[q.ans];
-  // SWAPPED: Japanese explanation first, English second
+  // Japanese explanation first (large), English second (small gray)
   document.getElementById('q-exp-en').textContent=q.exjp;
   document.getElementById('q-exp-jp').textContent=q.exen;
   document.getElementById('q-exp').classList.remove('hidden');
@@ -393,7 +480,7 @@ function finish(){
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   publish({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
   const correct=myAnswers.filter((a,i)=>a===QS[i].ans).length;
-  document.getElementById('f-icon').textContent=score>=130?'🥇':score>=100?'🎯':score>=70?'👏':'💪';
+  document.getElementById('f-icon').textContent=score>=90?'🥇':score>=70?'🎯':score>=50?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
   document.getElementById('f-score').textContent=score+' pts';
   document.getElementById('f-rank').textContent=correct+' / '+QS.length+' correct answers';
@@ -405,7 +492,7 @@ function finish(){
   }).join('');
   document.getElementById('hdr-r').textContent=myEmoji+' '+myGroup+' — '+score+'pts';
   show('pg-final');
-  if(score>=120)launchConfetti();
+  if(score>=90)launchConfetti();
 }
 
 function launchConfetti(){
@@ -420,7 +507,7 @@ function launchConfetti(){
 }
 
 window.addEventListener('load',()=>{
-  if(new URLSearchParams(window.location.search).get('p')==='1') goParticipant();
+  if(new URLSearchParams(window.location.search).get('p')==='1')goParticipant();
 });
 </script>
 </body></html>
