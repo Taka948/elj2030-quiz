@@ -42,7 +42,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 .pbar-wrap{background:#1a1a2e;border-radius:6px;height:8px;overflow:hidden;margin:10px 0 16px;}
 .pbar{height:100%;background:linear-gradient(90deg,#c8102e,#ffd700);border-radius:6px;transition:width .4s;}
 .q-en{font-size:20px;font-weight:700;line-height:1.35;margin-bottom:6px;}
-.q-jp{font-size:13px;opacity:.55;margin-bottom:18px;line-height:1.5;}
+.q-jp{font-size:19px;opacity:.55;margin-bottom:18px;line-height:1.5;}
 .opt{width:100%;background:#1a1a2e;border:2px solid #2a2a4a;border-radius:13px;padding:15px 16px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;text-align:left;margin-bottom:10px;font-family:inherit;display:block;transition:all .2s;}
 .opt:hover{border-color:#555;}
 .opt.correct{border-color:#00ff88!important;background:#062016!important;color:#00ff88;}
@@ -157,6 +157,7 @@ body{display:flex;flex-direction:column;overflow:hidden;}
   <!-- q-en = large white (used for JP), q-jp = small gray (used for EN) -->
   <div class="q-en" id="q-en"></div>
   <div class="q-jp" id="q-jp"></div>
+  <div id="q-combo-cards"></div>
   <div id="q-opts"></div>
   <div class="exp-box hidden" id="q-exp">
     <div style="color:#00ff88;font-weight:700;margin-bottom:6px;" id="q-exp-ans"></div>
@@ -438,8 +439,31 @@ function renderQ(){
   document.getElementById('q-prog').textContent=(qIdx+1)+' / '+QS.length;
   document.getElementById('q-pbar').style.width=(qIdx/QS.length*100)+'%';
   // Japanese = large white (q-en slot), English = small gray (q-jp slot)
-  document.getElementById('q-en').textContent=q.jp;
-  document.getElementById('q-jp').textContent=q.en;
+  // For combination questions (Q5-Q8), strip the numbered items from the question text
+  // and render them as separate choice cards above the answer buttons
+  const isCombo = q.cat.startsWith('🔗');
+  if(isCombo){
+    const jpParts = q.jp.split('\n');
+    const enParts = q.en.split('\n');
+    document.getElementById('q-en').textContent=jpParts[0];
+    document.getElementById('q-jp').textContent=enParts[0];
+    // Build combo choice cards
+    const jpItems = jpParts.slice(1);
+    const enItems = enParts.slice(1);
+    let cardsHtml='<div style="background:#0d0d20;border-radius:12px;padding:12px 14px;margin-bottom:14px;">';
+    jpItems.forEach((jp,i)=>{
+      cardsHtml+=`<div style="padding:8px 0;${i<jpItems.length-1?'border-bottom:1px solid #2a2a4a;':''}">
+        <div style="font-size:14px;font-weight:600;line-height:1.5;">${jp}</div>
+        <div style="font-size:12px;opacity:.5;margin-top:2px;line-height:1.4;">${enItems[i]||''}</div>
+      </div>`;
+    });
+    cardsHtml+='</div>';
+    document.getElementById('q-combo-cards').innerHTML=cardsHtml;
+  } else {
+    document.getElementById('q-en').textContent=q.jp;
+    document.getElementById('q-jp').textContent=q.en;
+    document.getElementById('q-combo-cards').innerHTML='';
+  }
   document.getElementById('q-exp').classList.add('hidden');
   document.getElementById('q-next').classList.add('hidden');
   const c=document.getElementById('q-opts');c.innerHTML='';
