@@ -334,7 +334,11 @@ function renderLBData(p){
     document.getElementById('h-avg').textContent='—';
     document.getElementById('h-qstats').innerHTML='';
   }
-  const all=[...parts].sort((a,b)=>a.done===b.done?b.score-a.score:a.done?-1:1);
+  const all=[...parts].sort((a,b)=>{
+    if(a.done!==b.done) return a.done?-1:1;
+    if(b.score!==a.score) return b.score-a.score;
+    return (a.finishedAt||Infinity)-(b.finishedAt||Infinity);
+  });
   document.getElementById('lb-count').textContent=all.length?all.length+' team'+(all.length>1?'s':''):'';
   const list=document.getElementById('lb-list');
   if(!all.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';return;}
