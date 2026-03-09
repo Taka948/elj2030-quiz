@@ -465,7 +465,7 @@ function finish(){
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
   publish({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
   const correct=myAnswers.filter((a,i)=>a===QS[i].ans).length;
-  document.getElementById('f-icon').textContent=score>=90?'🥇':score>=70?'🎯':score>=50?'👏':'💪';
+  document.getElementById('f-icon').textContent=score>=70?'🎯':score>=50?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
   document.getElementById('f-score').textContent=score+' pts';
   document.getElementById('f-breakdown').innerHTML=QS.map((q,i)=>{
