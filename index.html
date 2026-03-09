@@ -296,7 +296,12 @@ function goHost(){
     setStatus('<span class="dot"></span> Ready — scan QR to join','#00ff88');
     const base=window.location.href.split('?')[0];
     buildQR(base+'?p=1');
-    channel.subscribe('participant-update',msg=>{participants[msg.data.id]=msg.data;renderLBData(participants);});
+    channel.subscribe('participant-update',msg=>{
+      const prev=participants[msg.data.id]||{};
+      // Preserve finishTime once set — never overwrite with undefined
+      participants[msg.data.id]={...msg.data, finishTime: msg.data.finishTime||prev.finishTime};
+      renderLBData(participants);
+    });
   });
 }
 
@@ -333,7 +338,10 @@ function renderLBData(p){
   document.getElementById('lb-count').textContent=all.length?all.length+' team'+(all.length>1?'s':''):'';
   const list=document.getElementById('lb-list');
   if(!all.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';return;}
-  const dr=[...done].sort((a,b)=>b.score-a.score||(a.finishTime||Infinity)-(b.finishTime||Infinity));
+  const dr=[...done].sort((a,b)=>{
+    if(b.score!==a.score) return b.score-a.score;
+    return (a.finishTime||Infinity)-(b.finishTime||Infinity);
+  });
   list.innerHTML=all.map(x=>{
     const ri=dr.findIndex(d=>d.id===x.id);
     const rl=x.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
