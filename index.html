@@ -507,7 +507,7 @@ function finish(){
   document.getElementById('f-icon').textContent=score>=90?'🥇':score>=70?'🎯':score>=50?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
   document.getElementById('f-score').textContent=score+' pts';
-  document.getElementById('f-rank').textContent=correct+' / '+QS.length+' correct answers';
+  document.getElementById('f-rank').style.display='none';
   document.getElementById('f-breakdown').innerHTML=QS.map((q,i)=>{
     const ok=myAnswers[i]===q.ans;
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">
