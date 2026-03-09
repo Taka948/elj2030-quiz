@@ -333,7 +333,7 @@ function renderLBData(p){
   document.getElementById('lb-count').textContent=all.length?all.length+' team'+(all.length>1?'s':''):'';
   const list=document.getElementById('lb-list');
   if(!all.length){list.innerHTML='<div style="text-align:center;padding:30px;opacity:.4;font-size:14px;">Waiting for teams…<br>チームを待っています</div>';return;}
-  const dr=[...done].sort((a,b)=>b.score-a.score);
+  const dr=[...done].sort((a,b)=>b.score-a.score||(a.finishTime||Infinity)-(b.finishTime||Infinity));
   list.innerHTML=all.map(x=>{
     const ri=dr.findIndex(d=>d.id===x.id);
     const rl=x.done?(ri===0?'🥇':ri===1?'🥈':ri===2?'🥉':'#'+(ri+1)):'⏳';
@@ -384,6 +384,8 @@ function goParticipant(){
 
 function publish(data){if(channel)channel.publish('participant-update',data);}
 
+let quizStartTime=0;
+
 function startQuiz(){
   showErr('join-err','');
   const val=parseInt(document.getElementById('p-group-input').value,10);
@@ -393,6 +395,7 @@ function startQuiz(){
   myId='p_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
   myEmoji=EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
   qIdx=0;myAnswers=[];
+  quizStartTime=Date.now();
   publish({id:myId,name:myGroup,emoji:myEmoji,score:0,done:false,qProgress:0,answers:{}});
   show('pg-question');renderQ();
 }
@@ -463,7 +466,8 @@ function nextQ(){qIdx++;if(qIdx>=QS.length){finish();return;}renderQ();}
 function finish(){
   const score=myAnswers.reduce((s,a,i)=>s+(a===QS[i].ans?10:0),0);
   const answersObj={};myAnswers.forEach((a,i)=>answersObj[i]=a);
-  publish({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj});
+  const finishTime=Date.now()-quizStartTime;
+  publish({id:myId,name:myGroup,emoji:myEmoji,score,done:true,qProgress:QS.length,answers:answersObj,finishTime});
   const correct=myAnswers.filter((a,i)=>a===QS[i].ans).length;
   document.getElementById('f-icon').textContent=score>=70?'🎯':score>=50?'👏':'💪';
   document.getElementById('f-name').textContent=myEmoji+' '+myGroup;
